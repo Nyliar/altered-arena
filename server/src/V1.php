@@ -148,9 +148,13 @@ class V1
 
     // Players
     $tokens = [];
+    $ascended = [];
     foreach ($g['meeples'] as $m) {
       if (in_array($m['type'], ['hero', 'companion']) && str_starts_with($m['location'], 'storm-')) {
         $tokens[(int) $m['pId']][$m['type']] = (int) substr($m['location'], 6);
+      }
+      if ($m['type'] == 'ascend') {
+        $ascended[(int) $m['pId']][$m['location']] = true;
       }
     }
     $players = [];
@@ -168,6 +172,7 @@ class V1
           'position' => $tokens[$pId][$side] ?? ($side == 'hero' ? 0 : 7),
           'stats' => self::biomes($g['biomes'][$pId][$loc] ?? []),
           'blocked' => (bool) ($g['blockedExpeditions'][$pId][$loc] ?? false),
+          'ascended' => $ascended[$pId][$loc] ?? false,
         ];
       }
       $players[] = [
@@ -203,7 +208,13 @@ class V1
         }
         $biomes = $sides[($i - 1) % 2];
       }
-      $regions[] = ['index' => $i, 'biomes' => $biomes, 'kind' => $i == 0 ? 'heroRegion' : ($i == 7 ? 'companionRegion' : 'tumult')];
+      $region = ['index' => $i, 'biomes' => $biomes, 'kind' => $i == 0 ? 'heroRegion' : ($i == 7 ? 'companionRegion' : 'tumult')];
+      foreach ($g['meeples'] as $m) {
+        if (in_array($m['type'], ['forest', 'mountain', 'ocean']) && $m['location'] == 'storm-' . $i) {
+          $region['marker'] = ['biome' => $m['type'], 'owner' => (int) $m['pId']];
+        }
+      }
+      $regions[] = $region;
     }
 
     $winner = null;
@@ -275,6 +286,10 @@ class V1
     ];
     if (!empty($p['token'])) {
       $view['token'] = true;
+    }
+    $markers = array_values(array_filter(['forest', 'mountain', 'ocean'], fn($b) => in_array($b, $tokens)));
+    if ($markers) {
+      $view['markers'] = $markers;
     }
     if (($p['type'] ?? '') == 'character' || !empty($p['token'])) {
       if (isset($p['forest'])) {
@@ -464,7 +479,10 @@ class V1
             $buttons[] = ['key' => $m['id'] . ':' . $rid, 'label' => ucfirst($m['type']) . ' marker → region ' . $rid];
           }
         }
-        return $base + ['kind' => 'buttons', 'buttons' => $buttons];
+        // The markers and the regions, for the client to drag a marker onto a region
+        $markers = array_map(fn($m) => ['id' => (int) $m['id'], 'biome' => $m['type']], array_values($args['markers'] ?? []));
+        $regions = array_map('intval', array_keys($args['regions'] ?? []));
+        return $base + ['kind' => 'buttons', 'buttons' => $buttons, 'markRegion' => ['markers' => $markers, 'regions' => $regions]];
 
       case 'moveRegionMarker':
         $buttons = array_map(fn($m) => ['key' => (string) $m['id'], 'label' => 'Move ' . $m['type'] . ' marker'], array_values($args['markers'] ?? []));

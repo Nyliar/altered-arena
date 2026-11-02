@@ -139,7 +139,7 @@ pub fn decision(g: &mut Game, raw: &RawState, you: PId) -> R<Option<Value>> {
                 return Ok(None);
             }
             let n = php::intval(php::coalesce(php::get(&private, "n"), &json!(3)));
-            with(&base, json!({"kind": "select", "cardIds": php::coalesce(php::get(&private, "cards"), &php::arr()), "min": n, "max": n, "prompt": format!("Choose {} cards to put in your Mana", n)}))
+            with(&base, json!({"kind": "select", "cardIds": php::coalesce(php::get(&private, "cards"), &php::arr()), "min": n, "max": n, "toMana": true, "prompt": format!("Choose {} cards to put in your Mana", n)}))
         }
         "chooseAssignment" => {
             let mut play = vec![];
@@ -205,7 +205,11 @@ pub fn decision(g: &mut Game, raw: &RawState, you: PId) -> R<Option<Value>> {
             let n = if php::is_numeric(php::get(args, "n")) { php::intval(php::get(args, "n")) } else { php::count(&ids) as i64 };
             let max = n.min(php::count(&ids) as i64);
             let up_to = php::truthy(php::coalesce(php::get(args, "upTo"), &json!(false)));
-            with(&base, json!({"kind": "select", "cardIds": ids, "min": if up_to { 0 } else { max }, "max": max, "showInPicker": php::get(args, "source") == &json!("mana")}))
+            let mut d = json!({"kind": "select", "cardIds": ids, "min": if up_to { 0 } else { max }, "max": max, "showInPicker": php::get(args, "source") == &json!("mana")});
+            if php::get(args, "destination") == &json!("mana") {
+                d["toMana"] = json!(true);
+            }
+            with(&base, d)
         }
         "nightCleanup" => with(
             &base,
@@ -309,7 +313,13 @@ pub fn decision(g: &mut Game, raw: &RawState, you: PId) -> R<Option<Value>> {
                     buttons.push(json!({"key": format!("{}:{}", php::strval(php::get(m, "id")), rid), "label": format!("{} marker → region {}", php::ucfirst(&php::strval(php::get(m, "type"))), rid)}));
                 }
             }
-            with(&base, json!({"kind": "buttons", "buttons": buttons}))
+            // The markers and the regions, for the client to drag a marker onto a region
+            let markers: Vec<Value> = php::vals(php::coalesce(php::get(args, "markers"), &php::arr()))
+                .into_iter()
+                .map(|m| json!({"id": php::intval(php::get(m, "id")), "biome": php::strval(php::get(m, "type"))}))
+                .collect();
+            let regions: Vec<i64> = php::entries(php::coalesce(php::get(args, "regions"), &php::arr())).into_iter().map(|(rid, _)| php::intval(&json!(rid))).collect();
+            with(&base, json!({"kind": "buttons", "buttons": buttons, "markRegion": {"markers": markers, "regions": regions}}))
         }
         "moveRegionMarker" => {
             let buttons: Vec<Value> = php::vals(php::coalesce(php::get(args, "markers"), &php::arr()))
@@ -859,6 +869,10 @@ fn card_view(g: &Game, id: i64, tokens: &[String], positions: &mut std::collecti
         "counters": {},
         "statuses": statuses,
     });
+    let markers: Vec<&str> = ["forest", "mountain", "ocean"].into_iter().filter(|b| tokens.iter().any(|t| t == b)).collect();
+    if !markers.is_empty() {
+        v["markers"] = json!(markers);
+    }
     let token = !php::empty(p.get("token").unwrap_or(&Value::Null));
     if token {
         v["token"] = json!(true);
@@ -876,6 +890,9 @@ fn card_view(g: &Game, id: i64, tokens: &[String], positions: &mut std::collecti
             }
         }
     }
+    if php::loose_eq(c.db_props.get("rarity").unwrap_or(&Value::Null), &json!(2)) {
+        v["unique"] = unique_def(&c.db_props);
+    }
     let extra = p.get("extraDatas").cloned().unwrap_or(Value::Null);
     if !php::empty(php::get(&extra, "counter")) {
         let name = php::strval(php::coalesce(php::get(&extra, "counterName"), &json!("counter")));
@@ -884,6 +901,51 @@ fn card_view(g: &Game, id: i64, tokens: &[String], positions: &mut std::collecti
         v["counters"] = Value::Object(m);
     }
     Ok(v)
+}
+
+/// The printed data of a Unique, as a `CardDef` of the protocol: Uniques are not in the catalog
+/// (their ref is `Card`), each one carries its own properties. Their texts are lists of fragments
+/// (trigger, condition, output of each effect, `<BR>` between effects, `[]]` for an empty part).
+fn unique_def(p: &crate::game::PropMap) -> Value {
+    let get = |k: &str| p.get(k).cloned().unwrap_or(Value::Null);
+    let text = |k: &str| match get(k) {
+        Value::Array(parts) => {
+            let parts: Vec<String> = parts.iter().map(php::strval).filter(|s| !s.is_empty() && s != "[]]").collect();
+            Value::String(parts.join(" "))
+        }
+        Value::Null => Value::Null,
+        v => Value::String(php::strval(&v)),
+    };
+    let artist = match get("artist") {
+        Value::Object(m) => m.get("nickName").cloned().unwrap_or(Value::Null),
+        v => v,
+    };
+    let mut d = json!({
+        "ref": get("uid"),
+        "name": get("name"),
+        "type": get("type"),
+        "typeline": get("typeline"),
+        "subtypes": if get("subtypes").is_array() { get("subtypes") } else { json!([]) },
+        "faction": get("faction"),
+        "rarity": "unique",
+        "asset": get("asset"),
+        "effect": text("effectDesc"),
+        "keywords": [],
+    });
+    if d["effect"].is_null() {
+        d["effect"] = json!("");
+    }
+    for (k, v) in [("support", text("supportDesc")), ("flavor", get("flavorText")), ("artist", artist)] {
+        if !v.is_null() {
+            d[k] = v;
+        }
+    }
+    for k in ["costHand", "costReserve", "forest", "mountain", "ocean"] {
+        if let Some(x) = p.get(k).filter(|x| php::is_numeric(x)) {
+            d[k] = json!(php::intval(x));
+        }
+    }
+    d
 }
 
 /// The GameView of a player (`V1::build(Arena::view($gameId, $playerId))`); `you = None` is a
@@ -903,6 +965,38 @@ pub fn build(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
         }
     }
     Ok(view)
+}
+
+/// A "you may" effect offered with Pass (one effect, then Pass): `declinable` when the decision it
+/// leads to, once chosen, can still be passed (a target to pick or not...), so that the client
+/// may choose it right away. Found with a dry run on a copy of the game. Only in the GameView:
+/// `decision()` stays as in PHP (goldens, bots).
+fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
+    if d["kind"] != json!("choice") {
+        return;
+    }
+    let Some(choices) = d["choices"].as_array() else { return };
+    let pass = crate::core::node::PASS;
+    let effects: Vec<usize> = (0..choices.len()).filter(|i| choices[*i]["id"] != json!(pass)).collect();
+    let can_pass = choices.iter().any(|c| c["id"] == json!(pass) && c["enabled"] == json!(true));
+    let [i] = effects[..] else { return };
+    let effect = &choices[i];
+    if !can_pass || effect["enabled"] != json!(true) {
+        return;
+    }
+    let mut copy = g.clone();
+    let declinable = (|| -> R<bool> {
+        act(&mut copy, you, "actChooseAction", &json!([effect["id"]]))?;
+        let raw = view_state(&mut copy, you)?;
+        let Some(next) = (if raw.is_active { decision(&mut copy, &raw, you)? } else { None }) else { return Ok(false) };
+        let same_source = effect.get("sourceCardId").is_none() || next.get("sourceCardId").is_none() || effect["sourceCardId"] == next["sourceCardId"];
+        let kind = next["kind"].as_str().unwrap_or("");
+        Ok(same_source && kind != "turn" && kind != "confirm" && (next["canPass"] == json!(true) || (kind == "select" && next["min"] == json!(0))))
+    })()
+    .unwrap_or(false);
+    if declinable {
+        d["choices"][i]["declinable"] = json!(true);
+    }
 }
 
 fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
@@ -932,6 +1026,7 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
     // Cards (with the engine class name as ref)
     let mut tokens_on: std::collections::HashMap<i64, Vec<String>> = Default::default();
     let mut storm_tokens: std::collections::HashMap<(PId, String), i64> = Default::default();
+    let mut region_markers: std::collections::HashMap<i64, Value> = Default::default();
     for m in meeples::get_all(g) {
         let mm = &g.meeples[&m];
         if let Some(c) = mm.location.strip_prefix("card-") {
@@ -939,6 +1034,9 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
         }
         if (mm.kind == "hero" || mm.kind == "companion") && mm.location.starts_with("storm-") {
             storm_tokens.insert((php::intval(&json!(mm.pid)), mm.kind.clone()), php::intval(&json!(&mm.location[6..])));
+        }
+        if ["forest", "mountain", "ocean"].contains(&mm.kind.as_str()) && mm.location.starts_with("storm-") {
+            region_markers.insert(php::intval(&json!(&mm.location[6..])), json!({"biome": mm.kind, "owner": php::intval(&json!(mm.pid))}));
         }
     }
     let mut rows = ui_cards(g, you)?;
@@ -959,6 +1057,8 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
     // Players
     let biomes = players::get_biome_totals(g)?;
     let blocked = players::get_blocked_expeditions(g)?;
+    // Who wins each biome now (as BGA shows it on the tokens): on a copy, a view changes nothing
+    let movements = players::compute_storm(&mut g.clone(), false).unwrap_or_else(|_| php::arr());
     let reserve_slots = players::get_reserve_slots(g)?;
     let landmark_slots = players::get_landmark_slots(g)?;
     let passed = if globals::is(g, "dayPhase")? { globals::get(g, "skippedPlayers")? } else { php::arr() };
@@ -975,6 +1075,8 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
                     "position": storm_tokens.get(&(pid, side.to_string())).copied().unwrap_or(if side == "hero" { 0 } else { 7 }),
                     "stats": {"forest": stat("forest"), "mountain": stat("mountain"), "ocean": stat("ocean")},
                     "blocked": php::truthy(php::get(php::get(&blocked, &pid.to_string()), loc)),
+                    "ascended": crate::models::player::is_ascended(g, pid, loc)?,
+                    "advances": php::vals(php::get(php::get(&movements, &pid.to_string()), side)).iter().any(|v| php::intval(v) == 2),
                 }),
             );
         }
@@ -1013,7 +1115,11 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
         } else {
             Value::Null
         };
-        regions.push(json!({"index": i, "biomes": biomes, "kind": if i == 0 { "heroRegion" } else if i == 7 { "companionRegion" } else { "tumult" }}));
+        let mut r = json!({"index": i, "biomes": biomes, "kind": if i == 0 { "heroRegion" } else if i == 7 { "companionRegion" } else { "tumult" }});
+        if let Some(m) = region_markers.get(&i) {
+            r["marker"] = m.clone();
+        }
+        regions.push(r);
     }
 
     let mut winner = Value::Null;
@@ -1031,10 +1137,13 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
         _ => vec![],
     };
     let first = globals::get_int(g, "firstPlayer")?;
-    let decision_v = match (&raw, you) {
+    let mut decision_v = match (&raw, you) {
         (Some(r), Some(p)) if r.is_active => decision(g, r, p)?,
         _ => None,
     };
+    if let (Some(d), Some(p)) = (decision_v.as_mut(), you) {
+        mark_declinable(g, p, d);
+    }
     let log: Vec<Value> = crate::arena::log_for(g, you)
         .into_iter()
         .map(|l| {

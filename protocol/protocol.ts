@@ -110,8 +110,13 @@ export interface CardView {
   counters: Record<string, number>;
   /** Status keywords currently applying: fleeting, anchored, asleep, tough, defender, gigantic... */
   statuses: string[];
+  /** Terrain markers lying on the card (Nadir's, not placed yet) */
+  markers?: Biome[];
   /** Token cards are created by effects and disappear when they leave play */
   token?: boolean;
+  /** Unique cards only: their printed data. Uniques are not in the catalog (their ref is "Card");
+   * effect and support are their generated texts, ref is their unique id (e.g. "ALT_EOLE_B_AX_107_U_1908"). */
+  unique?: CardDef;
 }
 
 export interface ExpeditionView {
@@ -119,6 +124,10 @@ export interface ExpeditionView {
   position: number;
   stats: Record<Biome, number>;
   blocked: boolean;
+  /** Ascended (Soar...): until Rest, it moves forward even when the opposing expedition matches it */
+  ascended?: boolean;
+  /** At Dusk, as things stand, it moves forward: it wins a biome of its region */
+  advances?: boolean;
 }
 
 export interface PlayerView {
@@ -143,6 +152,8 @@ export interface RegionView {
   /** Biomes of the region; null while the Tumult card is face down */
   biomes: Biome[] | null;
   kind: 'heroRegion' | 'tumult' | 'companionRegion';
+  /** A terrain marker (Nadir): the region has this biome only, while the marker stays */
+  marker?: { biome: Biome; owner: PlayerId };
 }
 
 export interface LogEntry {
@@ -195,6 +206,8 @@ export interface ChoiceOption {
   label: string;
   enabled: boolean;
   sourceCardId?: number;
+  /** A "you may" effect (offered with Pass): once chosen, the decision it leads to can still be passed */
+  declinable?: boolean;
 }
 
 export interface ExpeditionOption {
@@ -241,6 +254,8 @@ export interface SelectDecision extends DecisionBase {
   costs?: Record<number, number>;
   /** Cards not on the board (mana, deck, discard...) are shown in a picker */
   showInPicker?: boolean;
+  /** The picked cards go to the Mana zone (face down) */
+  toMana?: boolean;
 }
 
 export interface ChoiceDecision extends DecisionBase {
@@ -300,6 +315,8 @@ export interface DeckDecision extends DecisionBase {
 export interface ButtonsDecision extends DecisionBase {
   kind: 'buttons';
   buttons: { key: string; label: string }[];
+  /** Noon of Nadir: put one of these markers on one of these regions (button key "markerId:region") */
+  markRegion?: { markers: { id: number; biome: Biome }[]; regions: number[] };
 }
 
 export type Decision =
