@@ -2,7 +2,7 @@ import { useGameCtx } from '../game/GameContext';
 import { confirmAnswer, primaryAction } from '../game/decisions';
 
 /**
- * The round button in the middle of the track: the main action of the current decision (end
+ * The pill in the bottom-right corner, by the hand: the main action of the current decision (end
  * the turn, confirm, pass), or who the game is waiting for.
  */
 export function TrackButton() {

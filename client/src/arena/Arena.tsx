@@ -9,6 +9,7 @@ import { fly, snapshot, type Snapshot } from './flights';
 import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
 import { CardActions } from './CardActions';
+import { TrackButton } from './TrackButton';
 import { MarkerGhost } from './TerrainMarkers';
 import './arena.css';
 
@@ -86,6 +87,9 @@ export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; c
         <InfoChip onLeave={onLeave} connected={connected} onLog={() => setLogOpen((o) => !o)} unread={unread} />
         <Prompt />
         <ArenaHand />
+        <div className="end-dock">
+          <TrackButton />
+        </div>
         <PhaseBanner />
         {extraTop && <div className="arena-extra">{extraTop}</div>}
       </div>
