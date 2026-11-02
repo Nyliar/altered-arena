@@ -14,12 +14,20 @@ counters, deck order). For each candidate:
 - the features below, computed on a copy of the game redealt from that player's point of view
   (`Observation::determinize`: the opponent's hand, both decks and face-down Mana dealt again),
   so they hold only what the player saw;
-- the label: the candidate is equivalent to the recorded answer when the game afterwards is the
-  same (`oracle_state` and who must play next) or when the two answers are the same once each card
-  id is replaced by what the card is (class, place, owner, exhausted, boosts): two copies of a
-  card count as one choice.
+- the label (`Trace::labels`): the candidate is equivalent to the recorded answer when
+  - the two answers are the same once each card id is replaced by what the card is (class,
+    place, owner, exhausted, boosts): two copies of a card count as one choice;
+  - or the game afterwards is the same (`oracle_state` and who must play next). When every
+    candidate leaves the same game (both players choose their opening Mana at once, so the first
+    choice does not show yet), the games are compared after the other player's following answers;
+  - or only the order differs: the player gives this answer a few steps later (at most 40), and
+    played first it leads to the recorded game once the same recorded answers are used (at each
+    decision, the first unused one with the same prompt that the game accepts). Two boosts on
+    two characters, effects resolved in another order, two cards played in the other order
+    count as right.
 
-Single-candidate steps and `act` requests are skipped and counted. The dataset is written once
+Single-candidate steps, `act` requests and answers the player cancelled right after
+(`actCancel...`) are skipped and counted. The dataset is written once
 (`dataset.jsonl`, `names.json`); training never touches the engine. Extraction runs on all cores
 (~2 minutes for 70 games, most of it the deck AI).
 

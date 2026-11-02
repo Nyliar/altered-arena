@@ -5,7 +5,7 @@
  *   card_own_id.json  class name => paths of the properties that hold the card's own id
  *   starters.min.json starter deck id => [class name => count]
  *   constants.json engine constants (locations, types, keywords...)
- * Run in the server container: php tools/export_cards.php /engine-data (engine/data mounted there)
+ * Run in the server container: php tools/export_cards.php /engine-data (rules/data mounted there)
  */
 require dirname(__DIR__) . '/src/bootstrap.php';
 

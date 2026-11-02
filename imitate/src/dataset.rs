@@ -2,9 +2,12 @@
 //! player had two or more candidate answers, the candidates' features (`features::extract`, from
 //! what that player saw) and which candidates are equivalent to the recorded answer.
 //!
-//! Equivalent: the same game afterwards (`Game::oracle_state` and who must play), or the same
-//! answer once card ids are replaced by what the cards are (two copies of a card in the same
-//! place count as one choice).
+//! Equivalent (`labels`): the same answer once card ids are replaced by what the cards are (two
+//! copies of a card in the same place count as one choice); the same game afterwards
+//! (`Game::oracle_state` and who must play), compared after the other players' following answers
+//! when the answer does not show yet (both players choose their opening Mana at once); or the
+//! same answers in another order: the player gives this answer a few steps later, and played
+//! first it leads to the same game once the same recorded answers are used.
 
 use crate::features::{self, Config, Feats};
 use altered_ai::play::{self, Agent, Observation};
@@ -15,7 +18,7 @@ use altered_rules::Game;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -98,33 +101,148 @@ fn state_sig(g: &Game) -> String {
     format!("{:?}{}", g.waiting_for(), g.oracle_state())
 }
 
-/// The state after an answer (None: refused)
-fn after(g: &Game, p: u32, a: &Value) -> Option<String> {
-    let mut c = g.clone();
-    altered_replay::play(&mut c, p, a).ok()?;
-    Some(state_sig(&c))
+/// The recorded game of a native replay: the game before each step (prepared for its answer),
+/// the step's decision, the state after it. Shorter than the replay when a step fails.
+pub struct Trace {
+    pub n: NativeReplay,
+    pub before: Vec<Game>,
+    pub decs: Vec<Value>,
+    pub after: Vec<String>,
 }
 
-/// Which candidates are equivalent to `real`
-pub fn labels(g: &Game, p: u32, cands: &[Value], real: &Value) -> Vec<bool> {
-    let real_sig = after(g, p, real);
-    let real_abs = features::abstract_answer(g, real);
-    cands
-        .iter()
-        .map(|c| {
-            if features::abstract_answer(g, c) == real_abs {
-                return true;
+pub fn trace(n: NativeReplay) -> Result<Trace, String> {
+    let mut g = native::start(&n).map_err(|e| format!("{:?}", e))?;
+    let (mut before, mut decs, mut after) = (vec![], vec![], vec![]);
+    for s in &n.steps {
+        let mut ready = g.clone();
+        prepare(&mut ready, s);
+        if native::apply(&mut g, s).is_err() {
+            break;
+        }
+        decs.push(ready.try_decision(s.p).ok().flatten().unwrap_or(Value::Null));
+        before.push(ready);
+        after.push(state_sig(&g));
+    }
+    Ok(Trace { n, before, decs, after })
+}
+
+/// How many answers to look ahead for the same answer given later
+const WINDOW: usize = 40;
+
+fn choice_label(d: &Value, a: &Value) -> Option<String> {
+    if a["type"] != "choice" {
+        return None;
+    }
+    let c = d["choices"].as_array()?.iter().find(|c| c["id"] == a["id"])?;
+    Some(format!("{}|{}", c["label"], c["sourceCardId"]))
+}
+
+impl Trace {
+    /// Plays the recorded answer of step i on `g` (prepared as step i; a choice by its label, its
+    /// id may have changed)
+    fn feed(&self, g: &Game, i: usize) -> Option<Game> {
+        let r = &self.n.steps[i];
+        let mut y = g.clone();
+        prepare(&mut y, r);
+        let now = y.try_decision(r.p).ok().flatten()?;
+        let mut a = r.a.clone();
+        if let Some(l) = choice_label(&self.decs[i], &r.a) {
+            if let Some(c) = now["choices"].as_array().and_then(|cs| cs.iter().find(|c| choice_label(&now, &json!({"type": "choice", "id": c["id"]})).as_deref() == Some(l.as_str()))) {
+                a = json!({"type": "choice", "id": c["id"]});
             }
-            real_sig.is_some() && after(g, p, c) == real_sig
-        })
-        .collect()
-}
+        }
+        altered_replay::play(&mut y, r.p, &a).ok()?;
+        Some(y)
+    }
 
-/// Whether answer `a` is equivalent to `real`
-fn same(g: &Game, p: u32, a: &Value, real: &Value) -> bool {
-    features::abstract_answer(g, a) == features::abstract_answer(g, real) || {
-        let r = after(g, p, real);
-        r.is_some() && after(g, p, a) == r
+    /// The step after k where the same player gives answer `a` (of step k) again
+    pub fn given_later(&self, k: usize, a: &Value) -> Option<usize> {
+        let s = &self.n.steps[k];
+        let abs = features::abstract_answer(&self.before[k], a);
+        let label = choice_label(&self.decs[k], a);
+        (k + 1..(k + WINDOW).min(self.after.len())).find(|&j| {
+            let r = &self.n.steps[j];
+            r.p == s.p
+                && (legal::canonical(&r.a) == legal::canonical(a)
+                    || match &label {
+                        Some(l) => choice_label(&self.decs[j], &r.a).as_ref() == Some(l),
+                        None => features::abstract_answer(&self.before[j], &r.a) == abs,
+                    })
+        })
+    }
+
+    /// Answer `a` at step k is the recorded answer of a later step j, and played first it leads
+    /// to the recorded game: after it, at each decision, the first unused recorded answer of the
+    /// window asked with the same prompt that the game accepts (then any that it accepts); same
+    /// when, once every step k..m is used (m >= j), the game equals the recorded game after m
+    pub fn reordered(&self, k: usize, a: &Value) -> bool {
+        let Some(j) = self.given_later(k, a) else { return false };
+        let end = (k + WINDOW).min(self.after.len());
+        let run = || -> Option<bool> {
+            let mut x = self.before[k].clone();
+            altered_replay::play(&mut x, self.n.steps[k].p, a).ok()?;
+            let mut used = vec![false; end - k];
+            used[j - k] = true;
+            loop {
+                let m = k + used.iter().take_while(|u| **u).count();
+                if m > j && state_sig(&x) == self.after[m - 1] {
+                    return Some(true);
+                }
+                let mut next = None;
+                'pass: for same_prompt in [true, false] {
+                    for i in (k..end).filter(|i| !used[i - k]) {
+                        if same_prompt && x.clone().try_decision(self.n.steps[i].p).ok().flatten().map(|d| d["prompt"].clone()) != Some(self.decs[i]["prompt"].clone()) {
+                            continue;
+                        }
+                        if let Some(y) = self.feed(&x, i) {
+                            next = Some((i, y));
+                            break 'pass;
+                        }
+                    }
+                }
+                let (i, y) = next?;
+                used[i - k] = true;
+                x = y;
+            }
+        };
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)).ok().flatten().unwrap_or(false)
+    }
+
+    /// Which candidates of step k are equivalent to the recorded answer
+    pub fn labels(&self, k: usize, cands: &[Value]) -> Vec<bool> {
+        let s = &self.n.steps[k];
+        let g = &self.before[k];
+        let real_abs = features::abstract_answer(g, &s.a);
+        let games: Vec<Option<Game>> = cands
+            .iter()
+            .map(|c| {
+                let mut x = g.clone();
+                altered_replay::play(&mut x, s.p, c).ok().map(|_| x)
+            })
+            .collect();
+        // Every answer leads to the recorded state: the answer does not show yet; compare after
+        // the other players' following answers
+        let hidden = games.iter().all(|x| x.as_ref().is_some_and(|x| state_sig(x) == self.after[k]));
+        let same_state = |x: &Game| -> bool {
+            if !hidden {
+                return state_sig(x) == self.after[k];
+            }
+            let mut x = x.clone();
+            let mut i = k + 1;
+            while i < self.after.len() && i <= k + 6 && self.n.steps[i].p != s.p {
+                match self.feed(&x, i) {
+                    Some(y) => x = y,
+                    None => return false,
+                }
+                i += 1;
+            }
+            state_sig(&x) == self.after[i - 1]
+        };
+        cands
+            .iter()
+            .zip(&games)
+            .map(|(c, x)| features::abstract_answer(g, c) == real_abs || x.as_ref().is_some_and(same_state) || (x.is_some() && self.reordered(k, c)))
+            .collect()
     }
 }
 
@@ -145,6 +263,8 @@ pub struct Skipped {
     pub act: usize,
     pub no_decision: usize,
     pub single: usize,
+    /// Answers the player took back right after (`actCancel...`); the new answer is the decision
+    pub cancelled: usize,
     pub replay_error: usize,
 }
 
@@ -160,13 +280,18 @@ pub fn decisions(path: &str, tables: &Tables, cfg: &Config, interner: &Mutex<Int
         }
     };
     let decks: [Value; 2] = [n.decks[0].clone(), n.decks[1].clone()];
-    let mut g = match native::start(&n) {
-        Ok(g) => g,
+    let steps = n.steps.len();
+    let tr = match trace(n) {
+        Ok(t) => t,
         Err(_) => {
             skipped.replay_error += 1;
             return (vec![], vec![], skipped);
         }
     };
+    if tr.after.len() < steps {
+        skipped.replay_error += 1;
+    }
+    let n = &tr.n;
     let mut ais: Vec<Ai> = (0..2)
         .map(|seat| {
             let deck = tables.deck_of(n.table, play::SEATS[seat] as u32);
@@ -180,58 +305,58 @@ pub fn decisions(path: &str, tables: &Tables, cfg: &Config, interner: &Mutex<Int
         .collect();
     let mut out = vec![];
     let mut base = vec![];
-    for (k, s) in n.steps.iter().enumerate() {
+    for k in 0..tr.after.len() {
+        let s = &n.steps[k];
         if s.a["type"] == "act" {
             skipped.act += 1;
-        } else {
-            let mut ready = g.clone();
-            prepare(&mut ready, s);
-            match ready.try_decision(s.p) {
-                Ok(Some(d)) => {
-                    let cands = legal::candidates(&d);
-                    if cands.len() < 2 {
-                        skipped.single += 1;
-                    } else if let Some(_dir) = baseline {
-                        let seat = (s.p - 2001) as usize;
-                        let mut b = ready.clone();
-                        let real = after(&ready, s.p, &s.a);
-                        let bot = search::bot_step(&mut b, s.p as i64) && Some(state_sig(&b)) == real;
-                        let mut rng = ChaCha8Rng::seed_from_u64(n.table as u64 * 1009 + k as u64);
-                        let obs = Observation::new(&ready, s.p as i64, &decks);
-                        let a = ais[seat].decide(&obs, &d, &mut rng);
-                        let ai = same(&ready, s.p, &a, &s.a);
-                        base.push(Baseline { table: n.table, step: k, bot, ai });
-                    } else {
-                        let lab = labels(&ready, s.p, &cands, &s.a);
-                        let mut rng = ChaCha8Rng::seed_from_u64((n.table as u64 * 7919 + k as u64) ^ cfg.seed);
-                        let obs = Observation::new(&ready, s.p as i64, &decks);
-                        let seat = (s.p - 2001) as usize;
-                        let pick = if cfg.search_pick { Some(features::search_pick(&mut ais[seat], &obs, &d, &cands, &mut rng)) } else { None };
-                        let feats: Vec<Feats> = features::extract(&obs, &d, &cands, &mut rng, cfg, pick.as_ref());
-                        let mut it = interner.lock().unwrap();
-                        let feats = feats.into_iter().map(|f| f.into_iter().map(|(name, v)| (it.id(&name), v)).collect()).collect();
-                        drop(it);
-                        let seat = (s.p - 2001) as usize;
-                        out.push(Decision {
-                            table: n.table,
-                            step: k,
-                            seat: s.p,
-                            player: n.names.get(seat).cloned().unwrap_or_default(),
-                            deck: tables.deck_of(n.table, s.p),
-                            group: features::group(&d),
-                            prompt: d["prompt"].as_str().unwrap_or("").to_string(),
-                            day: ready.oracle_state()["day"].as_i64().unwrap_or(0),
-                            labels: lab,
-                            feats,
-                        });
-                    }
-                }
-                _ => skipped.no_decision += 1,
-            }
+            continue;
         }
-        if native::apply(&mut g, s).is_err() {
-            skipped.replay_error += 1;
-            break;
+        let ready = &tr.before[k];
+        let d = &tr.decs[k];
+        if d.is_null() {
+            skipped.no_decision += 1;
+            continue;
+        }
+        let cands = legal::candidates(d);
+        let undone = n.steps.get(k + 1).is_some_and(|r| r.p == s.p && r.a["type"] == "act" && r.a["action"].as_str().is_some_and(|a| a.starts_with("actCancel")));
+        if undone {
+            skipped.cancelled += 1;
+        } else if cands.len() < 2 {
+            skipped.single += 1;
+        } else if baseline.is_some() {
+            let seat = (s.p - 2001) as usize;
+            let mut b = ready.clone();
+            let bot = search::bot_step(&mut b, s.p as i64) && state_sig(&b) == tr.after[k];
+            let mut rng = ChaCha8Rng::seed_from_u64(n.table as u64 * 1009 + k as u64);
+            let obs = Observation::new(ready, s.p as i64, &decks);
+            let a = ais[seat].decide(&obs, d, &mut rng);
+            // The deck AI's answer among the candidates, so that it is labelled as they are
+            let mut with = cands.clone();
+            with.push(a);
+            let ai = *tr.labels(k, &with).last().unwrap();
+            base.push(Baseline { table: n.table, step: k, bot, ai });
+        } else {
+            let lab = tr.labels(k, &cands);
+            let mut rng = ChaCha8Rng::seed_from_u64((n.table as u64 * 7919 + k as u64) ^ cfg.seed);
+            let obs = Observation::new(ready, s.p as i64, &decks);
+            let seat = (s.p - 2001) as usize;
+            let pick = if cfg.search_pick { Some(features::search_pick(&mut ais[seat], &obs, d, &cands, &mut rng)) } else { None };
+            let feats: Vec<Feats> = features::extract(&obs, d, &cands, &mut rng, cfg, pick.as_ref());
+            let mut it = interner.lock().unwrap();
+            let feats = feats.into_iter().map(|f| f.into_iter().map(|(name, v)| (it.id(&name), v)).collect()).collect();
+            drop(it);
+            out.push(Decision {
+                table: n.table,
+                step: k,
+                seat: s.p,
+                player: n.names.get(seat).cloned().unwrap_or_default(),
+                deck: tables.deck_of(n.table, s.p),
+                group: features::group(d),
+                prompt: d["prompt"].as_str().unwrap_or("").to_string(),
+                day: ready.oracle_state()["day"].as_i64().unwrap_or(0),
+                labels: lab,
+                feats,
+            });
         }
     }
     (out, base, skipped)
