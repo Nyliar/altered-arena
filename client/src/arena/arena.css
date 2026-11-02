@@ -1120,3 +1120,72 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 .reveal-outcome { font: 700 19px / 1.1 var(--font-title); letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
 .reveal-outcome.to-hand { color: var(--me); }
 .reveal-outcome.to-deck { color: #c9c2dc; }
+
+/* ---------------------------------------------------------------- actions of a tapped card */
+/* Tapping a spell casts it from the arc above the card, not from the track */
+.arena .track-drop.drop-valid { outline: none; background: none; }
+.card-actions {
+  position: fixed;
+  z-index: 115;
+  translate: -50% calc(-100% - 12px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  animation: ca-in 0.18s ease-out;
+}
+.card-actions > * { pointer-events: auto; }
+@keyframes ca-in { from { opacity: 0; translate: -50% calc(-100% + 4px); } }
+.ca-side {
+  width: 44px;
+  height: 44px;
+  margin-top: 30px;
+  border-radius: 50%;
+  border: 1px solid rgb(243 233 210 / 0.55);
+  background: rgb(14 12 30 / 0.92);
+  color: var(--cream);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.5);
+}
+.ca-side:hover { background: #2a2350; }
+.ca-main {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 3px solid var(--cream);
+  background: radial-gradient(circle at 50% 35%, #3a3470, #1d1840 70%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  cursor: pointer;
+  font: 700 13px / 1 var(--font-title);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 22px rgb(0 0 0 / 0.55);
+}
+.ca-main.ca-cast { background: radial-gradient(circle at 50% 35%, #8a6cff, #4a2fb0 70%); box-shadow: 0 0 0 4px rgb(138 108 255 / 0.3), 0 10px 22px rgb(0 0 0 / 0.55); }
+.ca-main:hover:not(:disabled) { filter: brightness(1.12); }
+.ca-main:disabled { opacity: 0.6; cursor: default; }
+.ca-cost {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(#5cc8ff, #009ee3);
+  border: 2px solid #0b1430;
+  color: #fff;
+  font: 700 16px / 1 var(--font-title);
+  letter-spacing: 0;
+}

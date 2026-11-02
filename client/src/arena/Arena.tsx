@@ -8,6 +8,7 @@ import { ArenaHand, InfoChip, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHi
 import { fly, snapshot, type Snapshot } from './flights';
 import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
+import { CardActions } from './CardActions';
 import { MarkerGhost } from './TerrainMarkers';
 import './arena.css';
 
@@ -89,6 +90,7 @@ export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; c
         {extraTop && <div className="arena-extra">{extraTop}</div>}
       </div>
       <CastFocus />
+      <CardActions />
       <TargetArrows />
       <MarkerGhost />
       <div className="arena-flights" ref={layerRef} aria-hidden="true" />

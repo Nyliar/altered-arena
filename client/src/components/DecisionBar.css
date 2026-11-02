@@ -55,9 +55,6 @@
 .db-buttons { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .db-buttons.wrap { margin-left: 0; justify-content: flex-start; }
 .hint { color: var(--muted); font-size: 13px; flex: 1; min-width: 120px; }
-.selected-actions { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.sa-title { display: flex; gap: 8px; align-items: baseline; }
-.sa-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 600px) {
   .decision-bar { padding: 6px 8px; gap: 4px; border-radius: 12px; }
   .db-prompt { font-size: 14px; }

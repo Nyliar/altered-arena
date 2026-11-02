@@ -363,7 +363,7 @@ function MatTrack({ l }: { l: ArenaLayout }) {
   return (
     <div className="mat-row mat-trackrow" style={rowBackground(l, 2)}>
       <div className="track" style={{ width: trackW, height: h, left: HERO_X * l.plane.w - (TRACK_UNITS / 2) * u }}>
-        <DropZone destination="spell" className="track-drop" label="Cast">
+        <DropZone destination="spell" className="track-drop">
           <Tile key={`0-${t[0].id}`} t={t[0]} u={u} h={h} part="full" at={0} />
           <Tile key={`1-${t[1].id}`} t={t[1]} u={u} h={h} part="full" at={2} />
           <Tile key={`2l-${t[2].id}`} t={t[2]} u={u} h={h} part="left" at={4} />

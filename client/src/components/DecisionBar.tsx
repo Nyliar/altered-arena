@@ -1,11 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Decision, TurnDecision } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
-import { choiceKey, cleanupCounts, confirmAnswer, DESTINATION_LABELS, exchangePicks, pickerCardIds, playCost, primaryAction, type PrimaryAction } from '../game/decisions';
+import { choiceKey, cleanupCounts, confirmAnswer, exchangePicks, pickerCardIds, primaryAction, type PrimaryAction } from '../game/decisions';
 import { RichText } from './RichText';
 import { DeckGrid, SelectPicker } from './Picker';
 import { Modal } from './Modal';
-import { ManaIcon } from './Glyph';
 import { useDecks } from '../api/catalog';
 import './DecisionBar.css';
 
@@ -56,60 +55,10 @@ function ConfirmButton({ d, label = 'Confirm', hidden }: { d: Decision; label?: 
   );
 }
 
-/** Actions of the card the player tapped during a turn */
-function SelectedCardActions({ d }: { d: TurnDecision }) {
-  const { ui, setUI, byId, def, aff, play, send, inspectCard } = useGameCtx();
-  if (ui.selected === null) return null;
-  const card = byId.get(ui.selected);
-  const cd = def(card);
-  const a = aff.get(ui.selected);
-  const id = ui.selected;
-  return (
-    <div className="selected-actions">
-      <div className="sa-title">
-        <b>{cd?.name ?? 'Card'}</b>
-        <span className="muted">{card?.zone === 'reserve' ? 'from Reserve' : card?.zone === 'hand' ? 'from hand' : ''}</span>
-      </div>
-      <div className="sa-buttons">
-        {a?.destinations?.map((dest) => {
-          const cost = playCost(d, card, cd, dest);
-          return (
-            <Btn key={dest} kind="primary" onClick={() => play(id, dest)}>
-              {DESTINATION_LABELS[dest]}
-              {cost !== undefined && (
-                <>
-                  {' '}
-                  <ManaIcon value={cost} />
-                </>
-              )}
-            </Btn>
-          );
-        })}
-        {a?.support && (
-          <Btn kind="primary" onClick={() => void send({ type: 'support', cardId: id })}>
-            Use support
-          </Btn>
-        )}
-        {a?.tap && (
-          <Btn kind="primary" onClick={() => void send({ type: 'tap', cardId: id })}>
-            Exhaust ability
-          </Btn>
-        )}
-        <Btn kind="ghost" onClick={() => inspectCard(id)}>
-          Zoom
-        </Btn>
-        <Btn kind="ghost" onClick={() => setUI((u) => ({ ...u, selected: null }))}>
-          Cancel
-        </Btn>
-      </div>
-    </div>
-  );
-}
-
 function TurnControls({ d, hide }: { d: TurnDecision; hide?: PrimaryAction['kind'] }) {
-  const { send, ui } = useGameCtx();
+  const { send } = useGameCtx();
   const canAct = d.play.length + d.support.length + d.tap.length > 0;
-  if (ui.selected !== null) return <SelectedCardActions d={d} />;
+  // A tapped card shows its actions above itself (arena/CardActions.tsx), its zones on the mat
   return (
     <>
       <span className="hint">{canAct ? 'Drag a glowing card to a zone, or tap it.' : 'No card can be played.'}</span>
