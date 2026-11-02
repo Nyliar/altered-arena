@@ -446,6 +446,9 @@ pub struct LogLine {
     pub player: Option<PId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<PId>,
+    /// Not in PHP: the card revealed from the top of a deck (`drawCards` to `reveal-{pId}`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reveal: Option<CardId>,
 }
 
 impl Game {

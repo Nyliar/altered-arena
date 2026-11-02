@@ -162,6 +162,17 @@ export interface LogEntry {
   player?: PlayerId;
 }
 
+/** A card revealed from the top of a deck ("Reveal the top card of your deck..."), seen by both
+ * players, and where it is now: still on top of the deck (face up), drawn, in Reserve... */
+export interface RevealView {
+  seq: number; // the log entry of the reveal
+  player: PlayerId; // whose deck
+  cardId: number;
+  ref: string | null;
+  unique?: CardDef;
+  to: 'deck' | 'hand' | 'reserve' | 'discard' | 'board';
+}
+
 export interface GameView {
   gameId: string;
   you: PlayerId | null; // null for a spectator
@@ -179,6 +190,8 @@ export interface GameView {
   decision: Decision | null; // what `you` must decide now
   waitingFor: PlayerId[]; // players who must decide
   log: LogEntry[]; // most recent entries (up to 40): clients merge them into their own history
+  /** The latest cards revealed from the top of a deck (not sent by the PHP oracle) */
+  reveals?: RevealView[];
 }
 
 // ---------------------------------------------------------------------------

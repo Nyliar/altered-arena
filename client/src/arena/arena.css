@@ -1038,3 +1038,85 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
   100% { opacity: 0; }
 }
 @keyframes arena-rotate { 50% { transform: rotate(-90deg); } }
+
+/* ---------------------------------------------------------------- opponent passed */
+/* Over the opponent's zone and expeditions; below the pick overlays (6), so targets stay bright */
+.passed-veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 5;
+  pointer-events: none;
+  animation: pv-in 0.6s ease-out;
+}
+.passed-veil::before {
+  content: '';
+  position: absolute;
+  inset: 0 -700px;
+  background: rgb(6 8 20 / 0.42);
+  backdrop-filter: saturate(0.35) brightness(0.85);
+}
+@keyframes pv-in { from { opacity: 0; } }
+
+/* ---------------------------------------------------------------- revealed cards */
+/* A card revealed on top of a deck: face up on the pile until it is drawn */
+.pile-revealed {
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 2px rgb(217 180 106 / 0.35), 0 0 16px rgb(217 180 106 / 0.6);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 2;
+}
+.pile-revealed img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pile-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  translate: -50% 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(20 16 36 / 0.88);
+  color: var(--gold);
+  font: 700 calc(var(--zone-card-w) * 0.13) / 1 var(--font-title);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* The reveal itself: from the deck to the middle of the screen, face up, then where it goes */
+.reveal-show { position: fixed; perspective: 1400px; will-change: transform, opacity; }
+.reveal-card { position: absolute; inset: 0; transform-style: preserve-3d; }
+.reveal-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 3px solid var(--gold);
+  background: #1a1830 center / cover no-repeat;
+  backface-visibility: hidden;
+  box-shadow: 0 0 0 4px rgb(217 180 106 / 0.25), 0 0 40px rgb(217 180 106 / 0.45), 0 24px 40px rgb(0 0 0 / 0.6);
+}
+.reveal-back { background-image: url('/img/card-back.jpg'); transform: rotateY(180deg); }
+.reveal-caption {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 14px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid rgb(217 180 106 / 0.6);
+  background: rgb(14 12 30 / 0.92);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.5);
+  white-space: nowrap;
+  text-align: center;
+}
+.reveal-who { font: 600 15px / 1.2 var(--font-text); color: #d8d2ea; }
+.reveal-outcome { font: 700 19px / 1.1 var(--font-title); letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
+.reveal-outcome.to-hand { color: var(--me); }
+.reveal-outcome.to-deck { color: #c9c2dc; }

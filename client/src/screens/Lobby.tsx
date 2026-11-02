@@ -6,7 +6,7 @@ import { InspectProvider } from '../game/inspect';
 import { DeckGrid } from '../components/Picker';
 import { Inspector } from '../components/Inspector';
 import { toast } from '../game/toasts';
-import { lastGame, saveDeck, savedDeck, savedName, saveName, saveToken } from './storage';
+import { confirmTurnPref, lastGame, saveConfirmTurnPref, saveDeck, savedDeck, savedName, saveName, saveToken } from './storage';
 import './Lobby.css';
 
 type Mode = 'bot' | 'match' | 'hotseat' | 'join';
@@ -17,6 +17,7 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
   const [mode, setMode] = useState<Mode>('bot');
   const [name, setName] = useState(savedName() || 'Player');
   const [name2, setName2] = useState('Player 2');
+  const [confirmTurn, setConfirmTurn] = useState(confirmTurnPref);
   const [deck, setDeck] = useState<string | null>(savedDeck());
   const [busy, setBusy] = useState(false);
   const [hotseat, setHotseat] = useState<{ gameId: string; players: { id: PlayerId; name: string; token?: string }[] } | null>(null);
@@ -129,6 +130,18 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
             Replays
           </a>
         </header>
+
+        <label className="pref">
+          <input
+            type="checkbox"
+            checked={confirmTurn}
+            onChange={(e) => {
+              setConfirmTurn(e.target.checked);
+              saveConfirmTurnPref(e.target.checked);
+            }}
+          />
+          <span>Confirm the end of my turn (a short countdown with Undo)</span>
+        </label>
 
         <div className="lobby-tabs" role="tablist">
           {(

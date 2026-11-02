@@ -87,8 +87,19 @@ interface Flight {
   played?: boolean;
 }
 
-/** Starts the flights from the previous snapshot to the new view. Call before paint. */
-export function fly(prev: Snapshot, next: Snapshot, view: GameView, root: HTMLElement, layer: HTMLElement, catalog: CardCatalog) {
+/**
+ * Starts the flights from the previous snapshot to the new view. Call before paint. `skip`: cards
+ * shown otherwise (a reveal, reveals.ts), and per player the draws among them.
+ */
+export function fly(
+  prev: Snapshot,
+  next: Snapshot,
+  view: GameView,
+  root: HTMLElement,
+  layer: HTMLElement,
+  catalog: CardCatalog,
+  skip: { cards: Set<number>; draws: Map<PlayerId, number> } = { cards: new Set(), draws: new Map() },
+) {
   const you = view.you;
   const flights: Flight[] = [];
   const face = (c: Pick<CardView, 'ref' | 'unique'> | undefined) => {
@@ -98,6 +109,7 @@ export function fly(prev: Snapshot, next: Snapshot, view: GameView, root: HTMLEl
 
   const created: HTMLElement[] = [];
   for (const c of view.cards) {
+    if (skip.cards.has(c.id)) continue;
     const now = next.cards.get(c.id)!;
     const before = prev.cards.get(c.id);
     if (before && before.zone === now.zone && before.owner === now.owner) continue;
@@ -134,7 +146,7 @@ export function fly(prev: Snapshot, next: Snapshot, view: GameView, root: HTMLEl
 
   // Cards that left the view (back into a hidden hand or deck)
   for (const [id, before] of prev.cards) {
-    if (next.cards.has(id) || !visible(before.rect)) continue;
+    if (next.cards.has(id) || !visible(before.rect) || skip.cards.has(id)) continue;
     const to = before.owner !== you ? next.piles.get(`hand-${before.owner}`) : next.piles.get(`deck-${before.owner}`);
     if (visible(to)) flights.push({ from: before.rect, to, face: face(before), hide: null, intoPile: true });
   }
@@ -142,7 +154,7 @@ export function fly(prev: Snapshot, next: Snapshot, view: GameView, root: HTMLEl
   // Draws we only know as counts (the opponent's hand)
   for (const p of view.players) {
     if (p.id === you) continue;
-    const drawn = Math.min(4, p.handCount - (prev.hand.get(p.id) ?? p.handCount));
+    const drawn = Math.min(4, p.handCount - (prev.hand.get(p.id) ?? p.handCount) - (skip.draws.get(p.id) ?? 0));
     const fromDeck = (prev.deck.get(p.id) ?? p.deckCount) > p.deckCount;
     const from = prev.piles.get(`deck-${p.id}`);
     const to = next.piles.get(`hand-${p.id}`);

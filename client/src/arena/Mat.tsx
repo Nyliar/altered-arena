@@ -11,6 +11,8 @@ import { MatCard } from './MatCard';
 import { deckPatch, HERO_X, rowBackground, type ArenaLayout } from './layout';
 import { forecast, regionCenter, STORM_BACK, stormTiles, TRACK_UNITS, type StormTile } from './model';
 import { TrackButton } from './TrackButton';
+import { revealedOnTop } from './reveals';
+import { useCardPointer } from '../game/useCardPointer';
 import { ManaBar } from './Hud';
 import { HeroMarkers, MARKED_SHIFT, RegionMarkers, regionBiomes } from './TerrainMarkers';
 
@@ -40,8 +42,22 @@ function useExpeditionPick(player: PlayerView | undefined, side: Side) {
 // Player zones: discard, deck, Reserve, Landmarks
 // ---------------------------------------------------------------------------
 
+/** A card revealed on top of the deck: face up there until it is drawn */
+function RevealedTop({ id }: { id: number }) {
+  const { byId, def } = useGameCtx();
+  const { handlers } = useCardPointer(id);
+  const d = def(byId.get(id));
+  return (
+    <span className="pile-revealed" data-card-id={id} title={`Revealed on top of the deck: ${d?.name ?? ''}`} {...handlers}>
+      {d && <img src={artUrl(d)} alt={d.name} draggable={false} />}
+      <span className="pile-tag">Revealed</span>
+    </span>
+  );
+}
+
 function Piles({ player }: { player: PlayerView }) {
-  const { zoneCards, def } = useGameCtx();
+  const { zoneCards, def, view } = useGameCtx();
+  const revealed = revealedOnTop(view).get(player.id);
   const [open, setOpen] = useState(false);
   const discard = zoneCards(player.id, 'discard');
   const top = discard.at(-1);
@@ -62,6 +78,7 @@ function Piles({ player }: { player: PlayerView }) {
       </button>
       <div className="pile pile-deck" data-pile={`deck-${player.id}`} title={`Deck: ${player.deckCount}`}>
         {player.deckCount > 0 ? <img src="/img/card-back.jpg" alt="" draggable={false} /> : <span className="pile-empty" />}
+        {revealed !== undefined && <RevealedTop id={revealed} />}
         <b key={player.deckCount} className="pile-count">
           {player.deckCount}
         </b>
@@ -386,6 +403,12 @@ function MatTrack({ l }: { l: ArenaLayout }) {
   );
 }
 
+/** Over the opponent's side of the mat once they have passed (as on BGA): darker and duller */
+function PassedVeil({ l, player }: { l: ArenaLayout; player: PlayerView | undefined }) {
+  if (!player?.passed) return null;
+  return <div className="passed-veil" style={{ height: l.rows[0] + l.rows[1] }} title={`${player.name} passed: no more plays this Afternoon`} />;
+}
+
 /** The tilted mat: opponent zone, opponent expeditions, Tumult, my expeditions, my zone. */
 export function Mat({ l }: { l: ArenaLayout }) {
   const { me, opp, you } = useGameCtx();
@@ -394,6 +417,7 @@ export function Mat({ l }: { l: ArenaLayout }) {
     <>
       <MatZone l={l} row={0} player={opp} mine={false} />
       <MatBand l={l} row={1} player={opp} mine={false} />
+      <PassedVeil l={l} player={opp} />
       <MatTrack l={l} />
       <MatBand l={l} row={3} player={me} mine={mine} />
       <MatZone l={l} row={4} player={me} mine={mine} />

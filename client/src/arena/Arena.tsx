@@ -6,6 +6,7 @@ import { useArenaLayout } from './layout';
 import { Mat } from './Mat';
 import { ArenaHand, InfoChip, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHint } from './Hud';
 import { fly, snapshot, type Snapshot } from './flights';
+import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
 import { MarkerGhost } from './TerrainMarkers';
 import './arena.css';
@@ -24,6 +25,8 @@ export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; c
   const snap = useRef<Snapshot | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  // Reveals already shown (those of the first view are not: they happened before)
+  const seenReveals = useRef<Set<number> | null>(null);
 
   // Flights: compare the cards' places before and after each new view, before paint
   useLayoutEffect(() => {
@@ -33,7 +36,15 @@ export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; c
     const next = snapshot(root, view);
     const prev = snap.current;
     snap.current = next;
-    if (prev && prev.seq !== view.seq) fly(prev, next, view, root, layer, catalog);
+    const reveals = view.reveals ?? [];
+    const fresh = seenReveals.current ? reveals.filter((r) => !seenReveals.current!.has(r.seq)) : [];
+    seenReveals.current = new Set([...(seenReveals.current ?? []), ...reveals.map((r) => r.seq)]);
+    if (prev && prev.seq !== view.seq) {
+      const draws = new Map<number, number>();
+      for (const r of fresh) if (r.to === 'hand') draws.set(r.player, (draws.get(r.player) ?? 0) + 1);
+      fly(prev, next, view, root, layer, catalog, { cards: new Set(fresh.map((r) => r.cardId)), draws });
+      fresh.forEach((r, i) => launchReveal(r, prev, next, view, root, layer, catalog, i * REVEAL_MS));
+    }
     // Measure again once the cards have settled (flights, hand layout)
     const t = setTimeout(() => {
       if (rootRef.current) snap.current = snapshot(rootRef.current, viewRef.current);

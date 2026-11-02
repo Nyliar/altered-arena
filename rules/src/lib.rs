@@ -108,6 +108,11 @@ impl Game {
         arena::bot_step(self)
     }
 
+    /// Night cleanups once the winner is known: answered for the players (see `arena`)
+    pub fn skip_decided_cleanups(&mut self) -> Result<bool, PhpError> {
+        arena::skip_decided_cleanups(self)
+    }
+
     /// The game is over (state `gameEnd`)
     pub fn is_over(&self) -> bool {
         framework::state(self).is_some_and(|s| s.name == "gameEnd")
