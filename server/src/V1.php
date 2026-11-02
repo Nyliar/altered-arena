@@ -173,6 +173,8 @@ class V1
           'stats' => self::biomes($g['biomes'][$pId][$loc] ?? []),
           'blocked' => (bool) ($g['blockedExpeditions'][$pId][$loc] ?? false),
           'ascended' => $ascended[$pId][$loc] ?? false,
+          // At Dusk, as things stand, it moves forward (a movement of 2: it wins a biome)
+          'advances' => in_array(2, array_map('intval', array_values($g['movements'][$pId][$side] ?? [])), true),
         ];
       }
       $players[] = [
@@ -352,7 +354,7 @@ class V1
         }
         $n = (int) ($private['n'] ?? 3);
         return $base + ['kind' => 'select', 'cardIds' => $private['cards'] ?? [], 'min' => $n, 'max' => $n,
-          'prompt' => "Choose $n cards to put in your Mana"];
+          'toMana' => true, 'prompt' => "Choose $n cards to put in your Mana"];
 
       case 'chooseAssignment':
         $play = [];
@@ -403,8 +405,12 @@ class V1
         $ids = array_map('intval', $private['cards'] ?? []);
         $n = is_numeric($args['n'] ?? null) ? (int) $args['n'] : count($ids);
         $max = min($n, count($ids));
-        return $base + ['kind' => 'select', 'cardIds' => $ids, 'min' => ($args['upTo'] ?? false) ? 0 : $max, 'max' => $max,
+        $d = ['kind' => 'select', 'cardIds' => $ids, 'min' => ($args['upTo'] ?? false) ? 0 : $max, 'max' => $max,
           'showInPicker' => ($args['source'] ?? null) === 'mana'];
+        if (($args['destination'] ?? null) === 'mana') {
+          $d['toMana'] = true;
+        }
+        return $base + $d;
 
       case 'nightCleanup':
         return $base + ['kind' => 'cleanup',

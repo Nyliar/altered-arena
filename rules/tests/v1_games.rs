@@ -21,10 +21,13 @@ fn strip(v: &Value) -> Value {
         if let Some(d) = m.get_mut("decision").and_then(Value::as_object_mut) {
             d.remove("id");
             // Choice labels are the engine's effect descriptions: only empty vs non-empty matters
-            // to the rules (PHP_ENGINE.md §2.6), the translation's texts differ
+            // to the rules (PHP_ENGINE.md §2.6), the translation's texts differ. `declinable` is a
+            // hint for the client found by a dry run on a copy of the game, which only the
+            // translation makes (v1::mark_declinable)
             for c in d.get_mut("choices").and_then(Value::as_array_mut).into_iter().flatten() {
                 let l = c["label"].as_str().is_some_and(|s| !s.is_empty());
                 c["label"] = json!(l);
+                c.as_object_mut().map(|c| c.remove("declinable"));
             }
         }
     }
