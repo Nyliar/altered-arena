@@ -1,0 +1,151 @@
+/* Expedition: the screens around a game (home, play, friend room, replays). Light pages, a slate rail,
+   gold frames. Everything is scoped under .xp so the game screens keep their own look. */
+.xp {
+  --xp-bg: #dfe6ea;
+  --xp-surface: #ffffff;
+  --xp-surface-2: #f7f9fa;
+  --xp-parchment: #f4f1ea;
+  --xp-slate: #1c3542;
+  --xp-ink: #15303c;
+  --xp-ink-2: #3f5662;
+  --xp-muted: #4f6672;
+  --xp-line: #c9d4da;
+  --xp-gold: #c8aa6e;
+  --xp-gold-deep: #b8914a;
+  --xp-gold-text: #7d5f22;
+  --xp-gold-light: #e7cf96;
+  --xp-teal: #0f7f78;
+  --xp-on-slate: #b9c7ce;
+  --xp-title: 'Marcellus SC', 'Cormorant Garamond', Georgia, serif;
+
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--xp-bg);
+  color: var(--xp-ink);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+}
+.xp a { color: var(--xp-gold-text); }
+.xp :focus-visible { outline: 2px solid var(--xp-teal); outline-offset: 2px; }
+.xp h1, .xp h2, .xp h3 { font-family: var(--xp-title); font-weight: 400; margin: 0; }
+.xp-tag { font-size: 12px; letter-spacing: 0.24em; font-weight: 600; color: var(--xp-teal); text-transform: uppercase; }
+.xp-muted { color: var(--xp-muted); }
+.xp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Buttons */
+.xp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--xp-surface);
+  color: var(--xp-ink);
+  box-shadow: inset 0 0 0 1px var(--xp-gold);
+}
+.xp a.xp-btn { color: var(--xp-ink); }
+.xp-btn:hover { background: #fbf8f0; }
+.xp-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.xp-btn.gold {
+  background: linear-gradient(180deg, #f1dfae, #cfab62);
+  box-shadow: inset 0 0 0 1px #fff3d6, 0 0 0 1px #a8853f, 0 6px 16px rgb(168 133 63 / 0.3);
+}
+.xp-btn.gold:hover:not(:disabled) { filter: brightness(1.05); }
+.xp-btn.big { min-height: 64px; padding: 16px 28px; font-family: var(--xp-title); font-weight: 400; font-size: 24px; letter-spacing: 0.04em; }
+
+/* Rail (app screens) */
+.xp-app { display: flex; min-height: 100dvh; }
+.xp-rail {
+  flex: 0 0 112px;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--xp-slate);
+  box-shadow: inset -1px 0 0 var(--xp-gold);
+}
+.xp-rail-logo {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+  font-family: var(--xp-title);
+  font-size: 30px;
+  color: var(--xp-gold-light);
+  text-decoration: none;
+  border-bottom: 1px solid rgb(200 170 110 / 0.35);
+}
+.xp a.xp-rail-logo { color: var(--xp-gold-light); }
+.xp-rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 6px;
+  font-family: var(--xp-title);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(200 170 110 / 0.2);
+}
+.xp a.xp-rail-item { color: var(--xp-on-slate); }
+.xp a.xp-rail-item:hover { color: #fff; background: rgb(255 255 255 / 0.05); }
+.xp a.xp-rail-item.on {
+  color: var(--xp-gold-light);
+  background: linear-gradient(90deg, rgb(200 170 110 / 0), rgb(200 170 110 / 0.16));
+  box-shadow: inset -3px 0 0 var(--xp-gold);
+}
+.xp-rail-bottom { margin-top: auto; border-top: 1px solid rgb(200 170 110 / 0.2); }
+.xp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 32px; }
+.xp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.xp-head h1 { font-size: 38px; }
+.xp-chip {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px 6px 6px;
+  background: var(--xp-surface);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--xp-line);
+}
+.xp-chip input {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--xp-ink);
+  width: 140px;
+  padding: 2px 0;
+}
+.xp-chip small { display: block; font-size: 12px; color: var(--xp-muted); }
+
+/* Portraits: the art of a hero card, cropped */
+.xp-por {
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d8c79f;
+  background: var(--xp-line);
+  flex: none;
+}
+.xp-por.win { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--xp-gold-deep); }
+.xp-card-art { object-fit: cover; object-position: 50% 22%; display: block; background: var(--xp-slate); }
+
+@media (max-width: 760px) {
+  .xp-app { flex-direction: column; }
+  .xp-rail { position: sticky; z-index: 5; height: auto; flex: none; flex-direction: row; box-shadow: inset 0 -1px 0 var(--xp-gold); }
+  .xp-rail-logo { padding: 10px 16px; border: 0; font-size: 24px; }
+  .xp-rail-item { flex: 1; padding: 8px 4px; border: 0; font-size: 12px; gap: 4px; }
+  .xp-rail-item svg { width: 22px; height: 22px; }
+  .xp-rail-bottom { margin: 0; border: 0; flex: 0 0 64px; }
+  .xp-main { padding: 16px; }
+}

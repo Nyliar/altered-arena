@@ -17,7 +17,7 @@ fn read(table: &str) -> Result<NativeReplay, String> {
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
-/// Every replay: table, players (name, faction, hero), number of steps
+/// Every replay: table, players (name, faction, hero, deck name, BGA deck id), number of steps
 pub fn list() -> Value {
     let mut out = vec![];
     let mut files: Vec<_> = std::fs::read_dir(dir()).into_iter().flatten().flatten().map(|e| e.path()).collect();
@@ -29,7 +29,7 @@ pub fn list() -> Value {
             .names
             .iter()
             .zip(&n.decks)
-            .map(|(name, d)| json!({"name": name, "faction": d["faction"], "hero": d["hero"]}))
+            .map(|(name, d)| json!({"name": name, "faction": d["faction"], "hero": d["hero"], "deckName": d["deckName"], "deckId": d["id"]}))
             .collect();
         out.push(json!({"table": n.table, "players": players, "steps": n.steps.len()}));
     }
