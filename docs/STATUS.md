@@ -25,6 +25,11 @@
 
 ## Known differences and limits
 
+- Rules changes from BGA (`docs/patches`, applied to the oracle by `tools/php_reference.sh`, and in
+  the Rust card data exported from it): Angry Crowd (YZ / OD Rare) and Partial Referee (YZ Common /
+  Rare, MU Rare) ask for their target first, then read its Base Cost for the Manaseed / the draw
+  (`target-then-base-cost.patch`); on BGA the player first chooses a cost range.
+
 - The PHP engine's quirks are reproduced on purpose (e.g. the `array_push` bug in the phase
   listeners, MoveCard's undefined action): the reference is what BGA does.
 - The GameView follows the PHP adapter (`server/src/V1.php`): play options have no cost of their

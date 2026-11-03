@@ -142,6 +142,7 @@ pub fn call(g: &mut Game, name: &str, card: Option<CardId>, event: &Value, args:
         "norobotnopermanent" => no_robotno_permanent(g, card, event, args),
         "noplantnopermanent" => no_plantno_permanent(g, card, event, args),
         "costcheck" => cost_check(g, card, event, args),
+        "basecostcheck" => base_cost_check(g, card, event, args),
         "has3withzerostat" => has3_with_zero_stat(g, card, event, args),
         "hasxwithzerostat" => has_x_with_zero_stat(g, card, event, args),
         "cansacrifice" => can_sacrifice(g, card, event, args),
@@ -1840,6 +1841,23 @@ pub fn cost_check(g: &mut Game, _card: Option<CardId>, event: &Value, args: &[Va
     }
     if php::loose_eq(&op, &json!("LTE")) {
         return b(php::ge(&cost, &cost_hand));
+    }
+    Ok(Value::Null)
+}
+
+/// `baseCostCheck($card, $event, $cost, $op = 'GTE')`: the event card's Base Cost (Reserve Cost if
+/// Fleeting, else Hand Cost) compared with `$cost` (null for other ops)
+// PHP: Helpers/Conditions.php:1182
+pub fn base_cost_check(g: &mut Game, _card: Option<CardId>, event: &Value, args: &[Value]) -> R<Value> {
+    let cost = req(args, 0, "baseCostCheck")?;
+    let op = opt(args, 1, json!("GTE"));
+    let target = cards::get(g, ev(event, "cardId"))?;
+    let base_cost = if card::has_token(g, target, "fleeting")? { card::get(g, target, "costReserve")? } else { card::get(g, target, "costHand")? };
+    if php::loose_eq(&op, &json!("GTE")) {
+        return b(php::le(&cost, &base_cost));
+    }
+    if php::loose_eq(&op, &json!("LTE")) {
+        return b(php::ge(&cost, &base_cost));
     }
     Ok(Value::Null)
 }
