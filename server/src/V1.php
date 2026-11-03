@@ -44,8 +44,17 @@ class V1
     $players = array_map(fn($p) => ['name' => $p['name'] ?? '', 'bot' => (bool) ($p['bot'] ?? false)], $body['players'] ?? []);
     $game = Arena::createGame(['players' => $players, 'dice' => $body['dice'] ?? null]);
     // Decks chosen in the lobby are selected right away; a custom deck (apiDeck: the content
-    // actConfirmAPIDeck receives) is confirmed
+    // actConfirmAPIDeck receives) is confirmed; a Reunion deck (reunionDeck: what the publisher API
+    // returns to get_player_deck_content) goes through actGetDeckInfos, then its result is confirmed
+    // as the BGA client does
     foreach (array_values($body['players'] ?? []) as $i => $p) {
+      if (!empty($p['reunionDeck']) && empty($p['bot'])) {
+        $pId = $game['players'][$i]['id'];
+        Arena::view($game['id'], $pId);
+        $deck = Arena::deckInfos($game['id'], $pId, $p['reunionDeck']);
+        Arena::act($game['id'], $pId, 'actConfirmAPIDeck', [$deck]);
+        continue;
+      }
       if (!empty($p['apiDeck']) && empty($p['bot'])) {
         $pId = $game['players'][$i]['id'];
         Arena::view($game['id'], $pId);

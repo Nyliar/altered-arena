@@ -260,6 +260,22 @@ class Arena
     }
   }
 
+  /**
+   * actGetDeckInfos of $playerId (a request, not an act: BGA calls it outside the state's possible
+   * actions), the publisher API answering $content to get_player_deck_content. Returns the deck
+   * as the client receives it (JSON).
+   */
+  public static function deckInfos(int $gameId, int $playerId, array $content): array
+  {
+    \Table::$externalResponder = fn($method, $args) => ['success' => 1, 'content' => $content];
+    try {
+      $deck = self::inRequest($gameId, $playerId, fn() => (new \altered())->actGetDeckInfos($content['apiId'] ?? ''));
+    } finally {
+      \Table::$externalResponder = null;
+    }
+    return json_decode(json_encode($deck), true);
+  }
+
   /** Runs $fn as a request of $playerId (tools that set up positions directly) */
   public static function inRequest(int $gameId, ?int $playerId, callable $fn)
   {

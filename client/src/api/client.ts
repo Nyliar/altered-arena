@@ -9,6 +9,7 @@ import type {
   MatchTicket,
   NewGame,
   PlayerId,
+  ReunionDeckSummary,
 } from '@protocol';
 
 /** An error returned by the server ({error, user}) or a network failure. */
@@ -63,6 +64,8 @@ export const api = {
   decks: () => request<DeckSummary[]>('/decks'),
   /** The AIs a bot seat can play */
   ais: () => request<AiSummary[]>('/ais'),
+  /** An Altered Reunion deck (decks-api id), checked by the engine */
+  reunionDeck: (id: string, signal?: AbortSignal) => request<ReunionDeckSummary>(`/reunion-decks/${encodeURIComponent(id)}`, { signal }),
   createGame: (game: NewGame) => request<GameCreated>('/games', { method: 'POST', body: JSON.stringify(game) }),
   /** With `since`, the server waits (up to ~20 s) for a view newer than `since`. */
   view: (gameId: string, player: PlayerId | null, token: string | null | undefined, since?: number, signal?: AbortSignal) =>
@@ -77,9 +80,9 @@ export const api = {
       { method: 'POST', body: JSON.stringify(answer) },
       token,
     ),
-  /** Joins the matchmaking queue */
-  matchmake: (name: string, deck: string) =>
-    request<MatchTicket>('/matchmaking', { method: 'POST', body: JSON.stringify({ name, deck }) }),
+  /** Joins the matchmaking queue with a starter deck or an Altered Reunion deck */
+  matchmake: (name: string, deck: { deck: string } | { reunionDeck: string }) =>
+    request<MatchTicket>('/matchmaking', { method: 'POST', body: JSON.stringify({ name, ...deck }) }),
   /** Long poll (up to ~20 s) until the ticket is matched */
   ticket: (ticket: string, signal?: AbortSignal) => request<MatchTicket>(`/matchmaking/${encodeURIComponent(ticket)}`, { signal }),
   leaveQueue: (ticket: string) => request<unknown>(`/matchmaking/${encodeURIComponent(ticket)}`, { method: 'DELETE' }).catch(() => null),

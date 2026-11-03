@@ -19,7 +19,9 @@ The game server must be running (`cargo run --release -p arena-server` in `alter
 
 URLs:
 
-- `/` lobby: play against the bot, find an opponent (matchmaking), two players (hot seat), join.
+- `/` lobby: play against the bot, find an opponent (matchmaking), two players (hot seat), join. Against
+  the bot and in matchmaking the deck is a starter deck or an Altered Reunion deck (paste the link of
+  the deck: the server reads it from decks-api and the engine checks it, `GET /api/v1/reunion-decks/{id}`).
 - `/?game=ID&player=PID` a seat of a game. The seat's secret token (returned by `POST /games` or
   matchmaking) is kept in localStorage and sent in the `Authorization` header, never in URLs. Share
   links carry it in the fragment (`#token=T`, never sent to the server), stored then removed from the

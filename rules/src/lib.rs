@@ -14,6 +14,7 @@ pub mod managers;
 pub mod models;
 pub mod php;
 pub mod php_rand;
+pub mod reunion;
 pub mod states;
 pub mod v1;
 

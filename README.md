@@ -35,7 +35,8 @@ Client development with hot reload: `cd client && ARENA_API=http://localhost:808
 (http://localhost:5173).
 
 Server settings (environment): `PORT` (8080), `CLIENT_DIR` (client/dist), `ART_DIR`,
-`PROTOCOL_DIR` (protocol/data), `DATA_DIR` (data: games are saved there every `PERSIST_SECS` (10)
+`PROTOCOL_DIR` (protocol/data), `DECKS_API_URL` (https://decks.alteredcore.org: the Altered Reunion
+decks, `reunionDeck` of a new game), `DATA_DIR` (data: games are saved there every `PERSIST_SECS` (10)
 and reloaded on demand), `ENGINE_THREADS` (threads running the engine, default: one per CPU) and
 `ENGINE_STACK_MB` (their stacks, 256: requests recurse like PHP's), `ARENA_DEBUG=1` (enables
 `/api/debug/*`, the hidden state of a game — never in production), `MIMALLOC_PURGE_DELAY=0`
@@ -102,3 +103,5 @@ See `docs/STATUS.md` for where things stand.
 | `cd client && npm run check:decisions -- --server URL` | games played by the client's own decision logic |
 | `./target/release/loadtest --games 1000 --pid PID` | load test, see `docs/PERFORMANCE.md` |
 | `php tools/export_cards.php` (in the PHP container) then `tools/build_catalog.py` | refresh card data from AlteredBGA |
+| `php tools/api_decks.php export DIR` (in the PHP container), copy `flow.min.json` and `refs.min.json` to `rules/data` | refresh the Unique effect tables (FlowConvertor) and the card references of API decks |
+| `php tools/api_decks.php uniques\|cardclass\|decks` (in the PHP container) | record the goldens of Uniques, card references and games with a Reunion deck (`server/goldens/{uniques,cardclass,apidecks}/`) |

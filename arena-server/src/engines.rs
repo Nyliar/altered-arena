@@ -32,6 +32,8 @@ pub struct NewSeat {
     pub deck: Option<String>,
     /// An AI seat (a bot the server plays, not the engine): the AI's id and its decklist
     pub ai: Option<(String, Value)>,
+    /// An Altered Reunion deck, as the publisher API answers it (`reunion::publisher_response`)
+    pub reunion_deck: Option<Value>,
 }
 
 /// A game of the `rules` engine as the server keeps it (and saves it)
@@ -80,8 +82,8 @@ impl ServerGame {
         let new: Vec<NewPlayer> = players
             .iter()
             .map(|p| match &p.ai {
-                Some((_, deck)) => NewPlayer { name: p.name.clone(), bot: false, deck: None, api_deck: Some(deck.clone()) },
-                None => NewPlayer { name: p.name.clone(), bot: p.bot, deck: p.deck.clone(), api_deck: None },
+                Some((_, deck)) => NewPlayer { name: p.name.clone(), bot: false, deck: None, api_deck: Some(deck.clone()), reunion_deck: None },
+                None => NewPlayer { name: p.name.clone(), bot: p.bot, deck: p.deck.clone(), api_deck: None, reunion_deck: p.reunion_deck.clone() },
             })
             .collect();
         // The game id of the arena seeds the randomness of each act (Arena::seedRng)
@@ -301,8 +303,8 @@ mod tests {
                 let mut cleanups = 0;
                 for seed in 1..=30 {
                     let seats = [
-                        NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None },
-                        NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None },
+                        NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                        NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
                     ];
                     let mut g = ServerGame::new(format!("c{}", seed), seats, seed).unwrap();
                     g.run_bots();
@@ -346,8 +348,8 @@ mod tests {
             .stack_size(256 << 20)
             .spawn(move || {
                 let seats = [
-                    NewSeat { name: "Human".into(), bot: false, deck: Some("ax_1_sierra".into()), ai: None },
-                    NewSeat { name: "Player — Sierra & Oddball".into(), bot: true, deck: None, ai: Some(("deck:D01".into(), deck)) },
+                    NewSeat { name: "Human".into(), bot: false, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                    NewSeat { name: "Player — Sierra & Oddball".into(), bot: true, deck: None, ai: Some(("deck:D01".into(), deck)), reunion_deck: None },
                 ];
                 let mut g = ServerGame::new("t".into(), seats, 7).unwrap();
                 g.run_bots();

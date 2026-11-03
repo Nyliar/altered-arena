@@ -8,3 +8,4 @@ server/goldens/
 .env
 perf/**/*.sample.txt
 private/
+server/reunion_raw/

@@ -38,7 +38,7 @@ rules/src/
   managers/{cards,meeples,players,actions}.rs
   models/{card,player,action}.rs
   actions/<name>.rs one file per PHP action (39)
-  helpers/{conditions,utils,ft,collection}.rs
+  helpers/{conditions,utils,ft,collection,flow_convertor}.rs
   states/{setup,new_day,turn,engine,end_game}.rs   the *Trait.php files
   game_methods.rs   altered.game.php (checkCardListeners, genericPlayerCheckListeners, custom orders)
   v1.rs             server/src/V1.php: GameView (V1::build on getAllDatas) and decisions of protocol v1,
@@ -165,6 +165,25 @@ and the file has `injectShuffles`, the deck
 orders forced after the dump, in call order, which the runner gives the Rust engine
 (`ShuffleHook::Injected`: a shuffle of the same ids takes the next order, any other draws from the
 seeded generator).
+
+API decks (Altered Reunion), `server/tools/api_decks.php` (in the PHP container):
+
+- `uniques`: `Cards::generateUnique` on API contents (one per trigram of the real Uniques, `CEG` in
+  Cards/uniques.list.inc.php, then cards of 2 or 3 trigrams whose effects merge), in
+  `server/goldens/uniques/`: `managers::cards::generate_unique` must give the same properties in the
+  same order.
+- `cardclass`: `Cards::getCardClass` on every reference of MAP_REFS_CLASSES and variants (KS,
+  alternate arts, serial prints, unknown), in `server/goldens/cardclass/`:
+  `managers::cards::get_card_class` must give the same class, properties and art.
+- `decks`: games created by `V1::createGame` with a `reunionDeck` (what the publisher API answers
+  `get_player_deck_content`; the oracle's `getGenericGameInfos` answers it, then `actGetDeckInfos` and
+  `actConfirmAPIDeck`), in `server/goldens/apidecks/` (synthetic decks covering the references,
+  tokens, Uniques and refused decks) and `apidecks_real/` (`decks OUT_DIR RESPONSES`: public decks
+  of decks-api converted by `cargo run -p goldens --example reunion_responses`): `Game::create` with
+  the same deck must give the same tables, or fail as PHP did.
+
+The FlowConvertor tables and the reference data are PHP data: `php tools/api_decks.php export DIR`
+writes `flow.min.json` and `refs.min.json`, to copy to `rules/data` with the card data.
 
 Game creation: `--create` starts each whole game from a game created by the translation
 (`Game::create` with the recorded game id, decks and dice) instead of PHP's tables: its tables must be

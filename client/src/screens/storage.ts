@@ -31,6 +31,14 @@ export const savedName = () => read<string>(KEY_NAME) ?? '';
 export const saveName = (n: string) => write(KEY_NAME, n);
 export const savedDeck = () => read<string>(KEY_DECK);
 export const saveDeck = (d: string) => write(KEY_DECK, d);
+const KEY_DECK_SOURCE = 'arena.deckSource';
+const KEY_REUNION_DECK = 'arena.reunionDeck';
+export type DeckSource = 'starter' | 'reunion';
+export const savedDeckSource = () => read<DeckSource>(KEY_DECK_SOURCE) ?? 'starter';
+export const saveDeckSource = (s: DeckSource) => write(KEY_DECK_SOURCE, s);
+/** The last Altered Reunion deck (decks-api id) */
+export const savedReunionDeck = () => read<string>(KEY_REUNION_DECK);
+export const saveReunionDeck = (id: string) => write(KEY_REUNION_DECK, id);
 export const forgetGame = (gameId: string) => {
   if (lastGame()?.gameId === gameId) {
     try {

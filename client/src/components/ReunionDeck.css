@@ -1,0 +1,19 @@
+.reunion-deck { display: flex; flex-direction: column; gap: 10px; }
+.field.wide { max-width: 640px; }
+.reunion-status { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); }
+.reunion-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 640px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.reunion-summary.ok { border-color: var(--accent); }
+.reunion-hero { padding: 0; border: 0; background: none; cursor: zoom-in; flex: none; }
+.reunion-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.reunion-info b { overflow-wrap: anywhere; }
+.reunion-ok { color: var(--accent); font-weight: 600; }
+.deck-source { display: flex; gap: 6px; flex-wrap: wrap; }

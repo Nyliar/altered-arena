@@ -109,6 +109,94 @@ struct Report {
     first_failure: Option<String>,
 }
 
+/// Unique cards (server/tools/uniques.php goldens): Cards::generateUnique on each API content must
+/// give the same properties, in the same order, or fail as PHP did
+fn check_uniques(cases: &Value, r: &mut Report) {
+    for (i, case) in cases.as_array().into_iter().flatten().enumerate() {
+        r.nodes += 1;
+        let content = &case["content"];
+        let got = altered_rules::managers::cards::generate_unique(content).map(|mut v| {
+            altered_rules::php::normalize(&mut v);
+            v
+        });
+        let ok = match (&got, case.get("error")) {
+            (Err(_), Some(_)) => true,
+            (Ok(v), None) => serde_json::to_string(v).ok() == serde_json::to_string(&case["out"]).ok(),
+            _ => false,
+        };
+        if ok {
+            r.passed += 1;
+        } else if r.first_failure.is_none() {
+            let got = match got {
+                Ok(v) => v.to_string(),
+                Err(e) => format!("error {}", e),
+            };
+            let want = case.get("error").map(|e| format!("error {}", e)).unwrap_or_else(|| case["out"].to_string());
+            r.first_failure = Some(format!("case {} {}:\n    php:  {}\n    rust: {}", i, content["uniqueReduced"], want, got));
+        }
+    }
+}
+
+/// Card references (server/tools/api_decks.php cardclass): Cards::getCardClass must give the same
+/// class and properties (in the same order) and the same art getters, or fail as PHP did
+fn check_card_classes(cases: &Value, r: &mut Report) {
+    for case in cases.as_array().into_iter().flatten() {
+        r.nodes += 1;
+        let reference = case["ref"].as_str().unwrap_or("");
+        let got = altered_rules::managers::cards::get_card_class(reference).map(|c| {
+            let mut props = Value::Object(c.props.clone());
+            altered_rules::php::normalize(&mut props);
+            json!({"ref": reference, "class": c.class, "props": props, "token": c.is_token(), "asset": c.get_asset(), "mainAsset": c.get_main_asset(), "fullArt": c.get_full_art()})
+        });
+        let ok = match (&got, case.get("error")) {
+            (Err(_), Some(_)) => true,
+            (Ok(v), None) => serde_json::to_string(v).ok() == serde_json::to_string(case).ok(),
+            _ => false,
+        };
+        if ok {
+            r.passed += 1;
+        } else if r.first_failure.is_none() {
+            let got = match got {
+                Ok(v) => v.to_string(),
+                Err(e) => format!("error {}", e),
+            };
+            r.first_failure = Some(format!("{}:\n    php:  {}\n    rust: {}", reference, case, got));
+        }
+    }
+}
+
+/// A game created with a Reunion deck (server/tools/api_decks.php decks): the tables after
+/// V1::createGame must be PHP's, or the creation must fail as in PHP
+fn check_api_deck(data: &Value, r: &mut Report) {
+    r.nodes += 1;
+    let players: Vec<NewPlayer> = data["players"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|p| NewPlayer {
+            name: p["name"].as_str().unwrap_or("").to_string(),
+            bot: false,
+            deck: p["deck"].as_str().map(String::from),
+            api_deck: None,
+            reunion_deck: p.get("reunionDeck").cloned(),
+        })
+        .collect();
+    let dice: Vec<i64> = data["dice"].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+    match (Game::create(data["phpGame"].as_i64().unwrap_or(0), &players, &dice), data.get("error")) {
+        (Err(_), Some(_)) => r.passed += 1,
+        (Ok(g), None) => {
+            let diffs = altered_rules::load::diff_tables(&data["db"], &g.bga_tables());
+            if diffs.is_empty() {
+                r.passed += 1;
+            } else {
+                r.first_failure = Some(format!("created tables differ (php vs rust):\n    {}", diffs.iter().take(10).cloned().collect::<Vec<_>>().join("\n    ")));
+            }
+        }
+        (Ok(_), Some(e)) => r.first_failure = Some(format!("php refused the deck ({}), rust created the game", e)),
+        (Err(e), None) => r.first_failure = Some(format!("cannot create: {}", e)),
+    }
+}
+
 fn check_node(game: &Game, node: &Value, path: &str, r: &mut Report) {
     r.nodes += 1;
     let mut problems = vec![];
@@ -224,6 +312,18 @@ fn main() {
                     return (name, r);
                 }
             };
+            if data["mode"] == json!("uniques") {
+                check_uniques(&data["cases"], &mut r);
+                return (name, r);
+            }
+            if data["mode"] == json!("cardclass") {
+                check_card_classes(&data["cases"], &mut r);
+                return (name, r);
+            }
+            if data["mode"] == json!("apideck") {
+                check_api_deck(&data, &mut r);
+                return (name, r);
+            }
             let dice: Vec<i64> = data["dice"].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
             if create && data["mode"] == json!("game") {
                 // The game created by the translation (same game id, decks and dice) must have
@@ -235,8 +335,8 @@ fn main() {
                     .iter()
                     .enumerate()
                     .map(|(i, n)| match api.get(i) {
-                        Some(a) => NewPlayer { name: n.to_string(), bot: false, deck: None, api_deck: Some(a.clone()) },
-                        None => NewPlayer { name: n.to_string(), bot: false, deck: decks.get(i).cloned(), api_deck: None },
+                        Some(a) => NewPlayer { name: n.to_string(), bot: false, deck: None, api_deck: Some(a.clone()), reunion_deck: None },
+                        None => NewPlayer { name: n.to_string(), bot: false, deck: decks.get(i).cloned(), api_deck: None, reunion_deck: None },
                     })
                     .collect();
                 match Game::create(data["phpGame"].as_i64().unwrap_or(0), &players, &dice) {
