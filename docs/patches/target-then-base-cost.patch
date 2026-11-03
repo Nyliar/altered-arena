@@ -1,0 +1,236 @@
+Target first, then read its Base Cost (AlteredBGA, apply with `patch -p1`)
+
+Angry Crowd (YZ / OD Rare: "Discard target Character or Permanent. If its Base Cost was {2} or less,
+create a Manaseed token") and Partial Referee (YZ Common / Rare, MU Rare: "Discard target
+Character. If its Base Cost was {3} or more, its controller draws a card") were an XOR of two
+Target actions, one per cost range: the player first chose "a target of cost 2 or less" or "a
+target of cost 3 or more", then the target among those. The cost only decides the bonus, not a
+choice the card offers.
+
+Fix: one Target over every legal card; its effect is a CheckCondition on the new condition
+`baseCostCheck:COST:OP` (the target's Base Cost: Reserve Cost if Fleeting, else Hand Cost, as
+Target's maxBaseCost / minBaseCost), read before the discard: met, discard then the bonus;
+otherwise, discard only. The Rust translation has the same condition
+(rules/src/helpers/conditions.rs base_cost_check) and the cards' data is exported from this code.
+
+Checked: the per-card goldens of the five cards recorded again with this patch and replayed by the
+Rust engine (137 nodes); rules/tests/target_then_cost.rs plays each card on its rich board, checks
+that the first decision is the target (cards of both cost ranges in it), then for every target that
+the Manaseed is created / the card drawn exactly when the Base Cost condition holds.
+
+diff --color -ru a/modules/php/Cards/MU/MU_Rare_PartialReferee.php b/modules/php/Cards/MU/MU_Rare_PartialReferee.php
+--- a/modules/php/Cards/MU/MU_Rare_PartialReferee.php	2026-11-03 07:36:43
++++ b/modules/php/Cards/MU/MU_Rare_PartialReferee.php	2026-11-03 07:36:43
+@@ -29,21 +29,18 @@
+       'costHand' => 5,
+       'costReserve' => 3,
+       'changedStats' => ['forest', 'ocean'],
+-      'effectHand' => FT::XOR(
+-        FT::ACTION(TARGET, [
+-          'minBaseCost' => 3,
+-          'targetType' => [CHARACTER, PERMANENT],
++      // The target is chosen first; its Base Cost, read before it is discarded, decides the draw
++      'effectHand' => FT::ACTION(TARGET, [
++        'targetType' => [CHARACTER, PERMANENT],
++        'effect' => FT::ACTION(CHECK_CONDITION, [
++          'condition' => 'baseCostCheck:3:GTE',
+           'effect' => FT::SEQ(
+             FT::ACTION(DISCARD, []),
+             FT::ACTION(DRAW, ['players' => 'owner'])
+-          )
++          ),
++          'oppositeEffect' => FT::ACTION(DISCARD, []),
+         ]),
+-        FT::ACTION(TARGET, [
+-          'maxBaseCost' => 2,
+-          'targetType' => [CHARACTER, PERMANENT],
+-          'effect' => FT::ACTION(DISCARD, []),
+-        ]),
+-      )
++      ])
+     ];
+   }
+ }
+diff --color -ru a/modules/php/Cards/OD/OD_Rare_AngryCrowd.php b/modules/php/Cards/OD/OD_Rare_AngryCrowd.php
+--- a/modules/php/Cards/OD/OD_Rare_AngryCrowd.php	2026-11-03 07:36:43
++++ b/modules/php/Cards/OD/OD_Rare_AngryCrowd.php	2026-11-03 07:36:43
+@@ -26,27 +26,24 @@
+       'costHand' => 4,
+       'costReserve' => 4,
+       'changedStats' => ['costHand', 'costReserve'],
++      // The target is chosen first; its Base Cost, read before it is discarded, decides the token
+       'effectPlayed' => FT::SEQ(
+         FT::GAIN(ME, FLEETING),
+-        FT::XOR(
+-          FT::SEQ(
+-            FT::ACTION(TARGET, [
+-              'targetType' => [CHARACTER, PERMANENT],
+-              'maxBaseCost' => 2,
+-              'effect' => FT::ACTION(DISCARD, [])
+-            ]),
+-            FT::ACTION(INVOKE_TOKEN, [
+-              'pId' => 'source',
+-              'tokenType' => 'NE_Common_Manaseed',
+-              'targetLocation' => [LANDMARK],
+-            ])
+-          ),
+-          FT::ACTION(TARGET, [
+-            'targetType' => [CHARACTER, PERMANENT],
+-            'minBaseCost' => 3,
+-            'effect' => FT::ACTION(DISCARD, [])
++        FT::ACTION(TARGET, [
++          'targetType' => [CHARACTER, PERMANENT],
++          'effect' => FT::ACTION(CHECK_CONDITION, [
++            'condition' => 'baseCostCheck:2:LTE',
++            'effect' => FT::SEQ(
++              FT::ACTION(DISCARD, []),
++              FT::ACTION(INVOKE_TOKEN, [
++                'pId' => 'source',
++                'tokenType' => 'NE_Common_Manaseed',
++                'targetLocation' => [LANDMARK],
++              ])
++            ),
++            'oppositeEffect' => FT::ACTION(DISCARD, []),
+           ]),
+-        )
++        ])
+       )
+     ];
+   }
+diff --color -ru a/modules/php/Cards/YZ/YZ_Common_PartialReferee.php b/modules/php/Cards/YZ/YZ_Common_PartialReferee.php
+--- a/modules/php/Cards/YZ/YZ_Common_PartialReferee.php	2026-11-03 07:36:43
++++ b/modules/php/Cards/YZ/YZ_Common_PartialReferee.php	2026-11-03 07:36:43
+@@ -28,20 +28,17 @@
+       'ocean' => 2,
+       'costHand' => 5,
+       'costReserve' => 3,
+-      'effectHand' => FT::XOR(
+-        FT::ACTION(TARGET, [
+-          'minBaseCost' => 3,
++      // The target is chosen first; its Base Cost, read before it is discarded, decides the draw
++      'effectHand' => FT::ACTION(TARGET, [
++        'effect' => FT::ACTION(CHECK_CONDITION, [
++          'condition' => 'baseCostCheck:3:GTE',
+           'effect' => FT::SEQ(
+             FT::ACTION(DISCARD, []),
+             FT::ACTION(DRAW, ['players' => 'owner'])
+-          )
++          ),
++          'oppositeEffect' => FT::ACTION(DISCARD, []),
+         ]),
+-        FT::ACTION(TARGET, [
+-          'maxBaseCost' => 2,
+-          'effect' => FT::ACTION(DISCARD, []),
+-        ]),
+-
+-      )
++      ])
+     ];
+   }
+ }
+diff --color -ru a/modules/php/Cards/YZ/YZ_Rare_AngryCrowd.php b/modules/php/Cards/YZ/YZ_Rare_AngryCrowd.php
+--- a/modules/php/Cards/YZ/YZ_Rare_AngryCrowd.php	2026-11-03 07:36:43
++++ b/modules/php/Cards/YZ/YZ_Rare_AngryCrowd.php	2026-11-03 07:36:43
+@@ -26,27 +26,24 @@
+       'costHand' => 4,
+       'costReserve' => 4,
+       'changedStats' => ['costHand', 'costReserve'],
++      // The target is chosen first; its Base Cost, read before it is discarded, decides the token
+       'effectPlayed' => FT::SEQ(
+         FT::GAIN(ME, FLEETING),
+-        FT::XOR(
+-          FT::SEQ(
+-            FT::ACTION(TARGET, [
+-              'targetType' => [CHARACTER, PERMANENT],
+-              'maxBaseCost' => 2,
+-              'effect' => FT::ACTION(DISCARD, [])
+-            ]),
+-            FT::ACTION(INVOKE_TOKEN, [
+-              'pId' => 'source',
+-              'tokenType' => 'NE_Common_Manaseed',
+-              'targetLocation' => [LANDMARK],
+-            ])
+-          ),
+-          FT::ACTION(TARGET, [
+-            'targetType' => [CHARACTER, PERMANENT],
+-            'minBaseCost' => 3,
+-            'effect' => FT::ACTION(DISCARD, [])
++        FT::ACTION(TARGET, [
++          'targetType' => [CHARACTER, PERMANENT],
++          'effect' => FT::ACTION(CHECK_CONDITION, [
++            'condition' => 'baseCostCheck:2:LTE',
++            'effect' => FT::SEQ(
++              FT::ACTION(DISCARD, []),
++              FT::ACTION(INVOKE_TOKEN, [
++                'pId' => 'source',
++                'tokenType' => 'NE_Common_Manaseed',
++                'targetLocation' => [LANDMARK],
++              ])
++            ),
++            'oppositeEffect' => FT::ACTION(DISCARD, []),
+           ]),
+-        )
++        ])
+       )
+     ];
+   }
+diff --color -ru a/modules/php/Cards/YZ/YZ_Rare_PartialReferee.php b/modules/php/Cards/YZ/YZ_Rare_PartialReferee.php
+--- a/modules/php/Cards/YZ/YZ_Rare_PartialReferee.php	2026-11-03 07:36:43
++++ b/modules/php/Cards/YZ/YZ_Rare_PartialReferee.php	2026-11-03 07:36:43
+@@ -29,21 +29,18 @@
+       'costHand' => 5,
+       'costReserve' => 3,
+       'changedStats' => ['forest', 'ocean'],
+-      'effectHand' => FT::XOR(
+-        FT::ACTION(TARGET, [
+-          'minBaseCost' => 3,
+-          'targetType' => [CHARACTER, PERMANENT],
++      // The target is chosen first; its Base Cost, read before it is discarded, decides the draw
++      'effectHand' => FT::ACTION(TARGET, [
++        'targetType' => [CHARACTER, PERMANENT],
++        'effect' => FT::ACTION(CHECK_CONDITION, [
++          'condition' => 'baseCostCheck:3:GTE',
+           'effect' => FT::SEQ(
+             FT::ACTION(DISCARD, []),
+             FT::ACTION(DRAW, ['players' => 'owner'])
+-          )
++          ),
++          'oppositeEffect' => FT::ACTION(DISCARD, []),
+         ]),
+-        FT::ACTION(TARGET, [
+-          'maxBaseCost' => 2,
+-          'targetType' => [CHARACTER, PERMANENT],
+-          'effect' => FT::ACTION(DISCARD, []),
+-        ]),
+-      )
++      ])
+     ];
+   }
+ }
+diff --color -ru a/modules/php/Helpers/Conditions.php b/modules/php/Helpers/Conditions.php
+--- a/modules/php/Helpers/Conditions.php	2026-11-03 07:36:43
++++ b/modules/php/Helpers/Conditions.php	2026-11-03 07:36:43
+@@ -1175,6 +1175,23 @@
+     }
+   }
+ 
++  /**
++   * Base Cost of the event card (its Reserve Cost if it is Fleeting, else its Hand Cost, as Target's
++   * maxBaseCost / minBaseCost) compared with $cost: a card targets first, then checks the cost
++   */
++  public static function baseCostCheck($card, $event, $cost, $op = 'GTE')
++  {
++    $target = Cards::get($event['cardId']);
++    $baseCost = $target->hasToken(FLEETING) ? $target->getCostReserve() : $target->getCostHand();
++
++    if ($op == 'GTE') {
++      return $cost <= $baseCost;
++    }
++    if ($op == 'LTE') {
++      return $cost >= $baseCost;
++    }
++  }
++
+   public static function has3WithZeroStat($card, $event)
+   {
+     $playedCards = $card->getPlayer()->getPlayedCards();

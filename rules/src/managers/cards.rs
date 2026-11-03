@@ -576,6 +576,402 @@ pub fn create_deck(g: &mut Game, pid: PId, deck_content: &Value) -> R<String> {
     Ok(faction)
 }
 
+// ---------------------------------------------------------------------------
+// Card references (deck lists of the publisher API)
+// ---------------------------------------------------------------------------
+
+/// refs.min.json: `refs` (MAP_REFS_CLASSES: reference → "DIR/Class"), `manualAltArt`
+/// (MANUAL_ALT_ART), `altArt` (Cards::getAltArt), `serialIllustrations` (the FACTION/UID of the
+/// illustrations whose UID ends with _NNN or _XXX)
+pub fn refs_data() -> &'static Value {
+    static DATA: OnceLock<Value> = OnceLock::new();
+    DATA.get_or_init(|| serde_json::from_str(include_str!("../../data/refs.min.json")).expect("refs.min.json"))
+}
+
+/// A card object built from a reference, not in the database (`Cards::getCardClass`): its class
+/// and its properties
+#[derive(Clone, Debug)]
+pub struct CardObject {
+    pub class: String,
+    pub props: Map<String, Value>,
+}
+
+impl CardObject {
+    /// The magic getter of a property: its value, else the default of its type
+    fn get_or(&self, name: &str, default: Value) -> Value {
+        match self.props.get(name) {
+            Some(v) if !v.is_null() => v.clone(),
+            _ => default,
+        }
+    }
+    pub fn get_rarity(&self) -> Value {
+        self.get_or("rarity", json!(0))
+    }
+    pub fn get_asset(&self) -> Value {
+        self.get_or("asset", json!(""))
+    }
+    pub fn get_main_asset(&self) -> Value {
+        self.get_or("mainAsset", json!(""))
+    }
+    pub fn get_full_art(&self) -> Value {
+        self.get_or("fullArt", json!(false))
+    }
+    /// `isToken()`
+    pub fn is_token(&self) -> bool {
+        self.props.get("token").is_some_and(php::truthy)
+    }
+    /// `setProperty($name, $value)` (the setters of the properties)
+    pub fn set(&mut self, name: &str, v: Value) {
+        self.props.insert(name.into(), v);
+    }
+    /// `jsonSerialize()` of a card that is not in the database
+    pub fn json(&self) -> Value {
+        json!({"id": null, "location": null, "state": null, "pId": null, "properties": Value::Object(self.props.clone())})
+    }
+}
+
+/// `$expUid[$i] = $v` on the parts of a uid (a missing part is added at the end)
+fn set_part(parts: &mut Vec<String>, i: usize, v: &str) {
+    match parts.get_mut(i) {
+        Some(p) => *p = v.into(),
+        None => parts.push(v.into()),
+    }
+}
+
+/// `Cards::isAlternateArt($uid)`
+// PHP: Managers/Cards.php:94
+pub fn is_alternate_art(uid: &str) -> bool {
+    let p = php::explode("_", uid);
+    let part = |i: usize| p.get(i).map(String::as_str);
+    part(2) == Some("A")
+        || part(1).is_some_and(|s| ["DUSTERTOP", "DUSTERCB", "DUSTEROP", "TCS3", "WCS25", "MUSUBI"].contains(&s))
+        || part(2) == Some("P")
+        || php::isset(php::get(refs_data(), "manualAltArt"), uid)
+}
+
+/// `Cards::getMainUid($uid)`: the reference of the base print
+// PHP: Managers/Cards.php:144
+pub fn get_main_uid(uid: &str) -> String {
+    let manual = php::get(php::get(refs_data(), "manualAltArt"), uid);
+    if !manual.is_null() {
+        return php::strval(manual);
+    }
+    let mut p = php::explode("_", uid);
+    let set = p.get(1).cloned().unwrap_or_default();
+    if ["DUSTEROP", "DUSTERCB", "DUSTERTOP"].contains(&set.as_str()) {
+        let number = p.get(4).map(|s| json!(s)).unwrap_or(Value::Null);
+        let new = if php::lt(&number, &json!(25)) {
+            "CORE"
+        } else if php::lt(&number, &json!(45)) {
+            "ALIZE"
+        } else if php::lt(&number, &json!(85)) {
+            "CYCLONE"
+        } else {
+            "DUSTER"
+        };
+        set_part(&mut p, 1, new);
+    } else if set == "TCS3" {
+        set_part(&mut p, 1, "BISE");
+    } else if ["WCQ25", "WCS25", "WCF25", "MUSUBI", "JUDGE"].contains(&set.as_str()) {
+        set_part(&mut p, 1, "CORE");
+    } else if set == "WCS26" {
+        set_part(&mut p, 1, "DUSTER");
+    } else if ["EOLETOP", "EOLECB", "EOLEOP"].contains(&set.as_str()) {
+        set_part(&mut p, 1, "EOLE");
+    }
+    set_part(&mut p, 2, "B");
+    p.join("_")
+}
+
+/// `Cards::getAlternateUid($uid)`: the reference without rarity (and serial)
+// PHP: Managers/Cards.php:175
+pub fn get_alternate_uid(uid: &str) -> String {
+    let mut parts: Vec<Option<String>> = php::explode("_", uid).into_iter().map(Some).collect();
+    if parts.len() == 7 {
+        parts[6] = None;
+    }
+    if let Some(p) = parts.get_mut(5) {
+        *p = None;
+    }
+    parts.into_iter().flatten().collect::<Vec<_>>().join("_")
+}
+
+/// `Cards::getIconSet($uid)`
+// PHP: Managers/Cards.php:186
+pub fn get_icon_set(uid: &str) -> Option<&'static str> {
+    match php::explode("_", uid).get(1).map(String::as_str) {
+        Some("COREKS") => Some("ks"),
+        Some("ALIZE") => Some("tbf"),
+        Some("BISE") => Some("wfm"),
+        Some("CYCLONE") => Some("so"),
+        Some("DUSTER") => Some("sdu"),
+        Some("EOLE") => Some("roc"),
+        _ => None,
+    }
+}
+
+/// `Cards::illustrationExists($uid)`: whether img/illustrations/FACTION/UID.jpg is shipped (only
+/// asked for serial prints, whose list is exported)
+// PHP: Managers/Cards.php:134
+pub fn illustration_exists(uid: &str) -> bool {
+    let p = php::explode("_", uid);
+    if p.len() < 4 {
+        return false;
+    }
+    let faction = if p[3] == "OR" { "OD" } else { p[3].as_str() };
+    let path = format!("{}/{}", faction, uid);
+    php::vals(php::get(refs_data(), "serialIllustrations")).iter().any(|f| f.as_str() == Some(path.as_str()))
+}
+
+/// The serial suffix of a print (`/_(?:XXX|\d{3})$/`)
+fn serial_suffix(uid: &str) -> Option<&str> {
+    let i = uid.rfind('_')?;
+    let s = &uid[i + 1..];
+    (s == "XXX" || (s.len() == 3 && s.bytes().all(|b| b.is_ascii_digit()))).then(|| &uid[i..])
+}
+
+/// `Cards::getCardClass($uid)`: the card of a reference of the publisher API (alternate arts, KS
+/// prints and serial copies resolved to their class, with their own art)
+// PHP: Managers/Cards.php:207
+pub fn get_card_class(uid: &str) -> R<CardObject> {
+    let refs = php::get(refs_data(), "refs");
+    let alt_arts = php::get(refs_data(), "altArt");
+    // Serialized prints sent by the deck API (numbered copies e.g.
+    // ALT_DUSTERCB_P_AX_85_C_001 ... _030, and their ..._XXX placeholder) each
+    // carry their own art: strip the serial to resolve the base card identity,
+    // then restore it to the asset below so the per-copy image is used.
+    let serial = serial_suffix(uid).map(String::from);
+    let serial_base_uid = match &serial {
+        Some(s) => uid[..uid.len() - s.len()].to_string(),
+        None => String::new(),
+    };
+    let mut uid = if serial.is_some() { serial_base_uid.clone() } else { uid.to_string() };
+    let orig_uid = uid.clone();
+
+    let ks = is_ks(&uid);
+    let alternate = is_alternate_art(&uid);
+    let mut alt_uid = String::new();
+    let mut core_uid = String::new();
+    if ks {
+        core_uid = get_core_uid(&uid);
+        alt_uid = get_alt_uid(&uid);
+    } else if alternate {
+        core_uid = get_main_uid(&uid);
+        alt_uid = get_alternate_uid(&uid);
+    }
+
+    if !php::isset(refs, &uid) {
+        if !php::isset(refs, &core_uid) {
+            return Err(PhpError::new(format!("This card is not implemented {} {} {}t", uid, core_uid, alt_uid)));
+        } else if ks || alternate {
+            uid = core_uid.clone();
+        }
+    }
+
+    let class_path = php::strval(php::get(refs, &uid));
+    let class = php::explode("/", &class_path).get(1).cloned().unwrap_or_default();
+    let props = classes().get(&class).ok_or_else(|| PhpError::new(format!("Error: Class \"\\ALT\\Cards\\{}\" not found", class_path.replace('/', "\\"))))?;
+    let mut card = CardObject { class, props: (**props).clone() };
+    if let Some(icon_set) = get_icon_set(&uid) {
+        card.set("setIcon", json!(icon_set));
+    }
+
+    if ks || alternate {
+        let mut alt_art = php::get(alt_arts, &alt_uid).clone();
+        // Standard alternate-art prints (the A/B art variants, e.g. ALT_CORE_A_BR_31_C)
+        // with no specific override data still carry their own art.
+        if alt_art.is_null()
+            && alternate
+            && (php::explode("_", &alt_uid).get(2).is_some_and(|s| s == "A") || php::isset(php::get(refs_data(), "manualAltArt"), &orig_uid))
+        {
+            alt_art = php::arr();
+        }
+        if !alt_art.is_null() {
+            if php::isset(&alt_art, "flavorText") {
+                card.set("flavorText", php::get(&alt_art, "flavorText").clone());
+            }
+            let unsuffixed_alt_uid = alt_uid.clone();
+            let rarity = card.get_rarity();
+            let suffix = if php::loose_eq(&rarity, &json!(1)) {
+                "_R"
+            } else if php::loose_eq(&rarity, &json!(0)) {
+                "_C"
+            } else if php::loose_eq(&rarity, &json!(3)) {
+                "_E"
+            } else {
+                "_U"
+            };
+            card.set("asset", json!(format!("{}{}", alt_uid, suffix)));
+            alt_uid.push_str(suffix);
+
+            let info = php::get(alt_arts, &unsuffixed_alt_uid);
+            let rest = &alt_uid[unsuffixed_alt_uid.len()..];
+            if php::isset(info, "mainAsset") {
+                card.set("mainAsset", php::get(info, "mainAsset").clone());
+            } else if php::isset(info, "framedBase") {
+                card.set("mainAsset", json!(format!("{}{}", php::strval(php::get(info, "framedBase")), rest)));
+            } else if php::isset(&alt_art, "fullArt") {
+                card.set("mainAsset", json!(format!("{}{}", get_main_uid(&unsuffixed_alt_uid), rest)));
+            } else {
+                card.set("mainAsset", json!(alt_uid));
+            }
+
+            if php::isset(&alt_art, "fullArt") {
+                card.set("fullArt", json!(true));
+            }
+        }
+    }
+    // Each serialized copy displays its own art (e.g. ALT_DUSTERCB_P_AX_85_C_014).
+    if let Some(serial) = serial {
+        let numbered = serial != "_XXX";
+        let mut asset = format!("{}{}", serial_base_uid, serial);
+        // The multi-panel plague art is not shipped anymore, so decklists still
+        // referencing a copy number fall back on the single full-art _XXX print.
+        if numbered && !illustration_exists(&asset) {
+            let full_art_asset = format!("{}_XXX", serial_base_uid);
+            if illustration_exists(&full_art_asset) {
+                asset = full_art_asset;
+            }
+        }
+        card.set("asset", json!(asset));
+        if serial_base_uid.starts_with("ALT_DUSTERCB_P_") {
+            card.set("mainAsset", json!(get_main_uid(&serial_base_uid)));
+            card.set("fullArt", json!(true));
+        }
+        if numbered {
+            card.set("serial", json!(serial.trim_start_matches('_')));
+        }
+    }
+    Ok(card)
+}
+
+// ---------------------------------------------------------------------------
+// Unique cards
+// ---------------------------------------------------------------------------
+
+/// `constant($name)` for the scalar constants of the engine (rules/data/constants.json); an
+/// undefined constant throws
+fn constant(name: &Value) -> R<Value> {
+    static CONSTANTS: OnceLock<Map<String, Value>> = OnceLock::new();
+    let consts = CONSTANTS.get_or_init(|| serde_json::from_str(include_str!("../../data/constants.json")).expect("constants.json"));
+    let name = php::strval(name);
+    consts.get(&name).cloned().ok_or_else(|| PhpError::new(format!("Undefined constant \"{}\"", name)))
+}
+
+/// `Cards::isKS($uid)`
+// PHP: Managers/Cards.php:89
+pub fn is_ks(uid: &str) -> bool {
+    php::explode("_", uid).get(1).is_some_and(|s| s == "COREKS")
+}
+
+/// `Cards::getAltUid($uid)`: the KS uid without rarity and unique number
+// PHP: Managers/Cards.php:109
+pub fn get_alt_uid(uid: &str) -> String {
+    let mut parts: Vec<Option<String>> = {
+        let mut p = php::explode("_", uid);
+        set_part(&mut p, 1, "COREKS");
+        p.into_iter().map(Some).collect()
+    };
+    if parts.len() == 7 {
+        parts[6] = None;
+    }
+    if let Some(p) = parts.get_mut(5) {
+        *p = None;
+    }
+    parts.into_iter().flatten().collect::<Vec<_>>().join("_")
+}
+
+/// `Cards::getCoreUid($uid)`
+// PHP: Managers/Cards.php:121
+pub fn get_core_uid(uid: &str) -> String {
+    let mut parts = php::explode("_", uid);
+    set_part(&mut parts, 1, "CORE");
+    parts.join("_")
+}
+
+/// `Utils::convertFaction($faction)`
+// PHP: Helpers/Utils.php:315
+fn convert_faction(faction: &Value) -> Value {
+    match php::strval(faction).as_str() {
+        "AX" => json!("AX"),
+        "OR" => json!("OD"),
+        "BR" => json!("BR"),
+        "LY" => json!("LY"),
+        "MU" => json!("MU"),
+        "YZ" => json!("YZ"),
+        _ => Value::Null,
+    }
+}
+
+/// `Cards::generateUnique($unique)`: the properties of a Unique from its API content (decks-api
+/// `/api/bga/decks/{id}`: reference, name, cardType, subTypes, typeline, mainFaction, illustrator,
+/// elements, uniqueReduced). Null when an effect does not have its three ids.
+// PHP: Managers/Cards.php:415
+pub fn generate_unique(unique: &Value) -> R<Value> {
+    use crate::helpers::flow_convertor;
+    let mut properties = php::arr();
+    php::set(&mut properties, "uid", php::get(unique, "reference").clone());
+    let uid = php::strval(php::get(&properties, "uid"));
+    php::set(&mut properties, "rarity", json!(2));
+
+    let mut asset = php::explode("_", &uid);
+    asset.pop();
+    php::set(&mut properties, "asset", json!(asset.join("_")));
+    if is_ks(&uid) {
+        php::set(&mut properties, "setIcon", json!("ks"));
+
+        let alt_uid = get_alt_uid(&uid);
+        let alt_art = php::get(refs_data(), "altArt");
+        if php::isset(alt_art, &alt_uid) {
+            php::set(&mut properties, "flavorText", php::get(php::get(alt_art, &alt_uid), "flavorText").clone());
+            php::set(&mut properties, "asset", json!(format!("{}_U", alt_uid)));
+        } else {
+            php::set(&mut properties, "asset", json!(format!("{}_U", get_core_uid(&alt_uid))));
+        }
+    }
+    php::set(&mut properties, "faction", convert_faction(php::get(php::get(unique, "mainFaction"), "reference")));
+    php::set(&mut properties, "name", php::get(unique, "name").clone());
+    php::set(&mut properties, "type", constant(php::get(php::get(unique, "cardType"), "reference"))?);
+
+    let mut subtypes = vec![];
+    for sub in php::vals(php::get(unique, "subTypes")) {
+        subtypes.push(constant(sub)?);
+    }
+    php::set(&mut properties, "subtypes", Value::Array(subtypes));
+    php::set(&mut properties, "typeline", php::get(unique, "typeline").clone());
+    php::set(&mut properties, "artist", php::get(unique, "illustrator").clone());
+
+    let elements = php::get(unique, "elements");
+    for (prop, element) in [("costHand", "MAIN_COST"), ("costReserve", "RECALL_COST"), ("forest", "FOREST_POWER"), ("mountain", "MOUNTAIN_POWER"), ("ocean", "OCEAN_POWER")] {
+        php::set(&mut properties, prop, json!(php::intval(php::get(elements, element))));
+    }
+
+    // add effects
+    php::set(&mut properties, "uEffects", php::arr());
+    let flow = flow_convertor::data();
+    for card_element in php::vals(php::get(unique, "uniqueReduced")) {
+        let mut trinity = php::arr();
+        for id_gd in php::vals(php::get(card_element, "effects")) {
+            if php::in_array(id_gd, php::get(flow, "TRIGGER")) {
+                php::set(&mut trinity, "trigger", id_gd.clone());
+            } else if php::in_array(id_gd, php::get(flow, "CONDITION")) {
+                php::set(&mut trinity, "condition", id_gd.clone());
+            } else if php::in_array(id_gd, php::get(flow, "OUTPUT")) {
+                php::set(&mut trinity, "output", id_gd.clone());
+            }
+        }
+        if php::empty(&trinity) {
+            continue;
+        }
+        if php::count(&trinity) != 3 {
+            return Ok(Value::Null);
+        }
+        flow_convertor::construct_effect(&trinity, &mut properties)?;
+        php::push(php::get_mut(&mut properties, "uEffects"), php::values(&trinity));
+    }
+    Ok(properties)
+}
+
 /// `Cards::create($pieces, $globalLocation, ...)`: new rows (properties stored as JSON), read
 /// back from the DB as new objects
 // PHP: Helpers/CachedPieces.php:519

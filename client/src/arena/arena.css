@@ -515,14 +515,17 @@
   background-repeat: no-repeat;
 }
 .storm-tile.reveal { animation: arena-reveal 0.45s ease-out; }
-/* Biomes of each revealed region, on the track's top edge as printed on the Tumult cards */
+/* Biomes of each revealed region, in a pill at the bottom of the region, under the tokens */
 .region-chips {
-  --tot-icon: calc(var(--marker-size) * 0.5);
+  --tot-icon: calc(var(--marker-size) * 0.42);
   position: absolute;
-  top: 0;
-  translate: -50% -55%;
+  bottom: 5%;
+  translate: -50% 0;
   display: flex;
-  gap: 2px;
+  gap: 3px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgb(14 12 30 / 0.78);
   pointer-events: none;
   z-index: 3;
 }
@@ -551,13 +554,12 @@
 .marker-ghost { --tot-icon: var(--ghost-size); position: fixed; z-index: 300; translate: -50% -50%; scale: 1.15; pointer-events: none; filter: drop-shadow(0 12px 12px rgb(0 0 0 / 0.5)); }
 .marker-ghost.over { scale: 1; }
 body:has(.marker-ghost) { cursor: grabbing; }
-.track-lane { position: absolute; left: 0; right: 0; height: 50%; pointer-events: none; }
-.lane-theirs { top: 0; }
-.lane-mine { bottom: 0; }
+/* Both players' tokens on one line, above the biomes; side by side when they share a region */
+.track-lane { position: absolute; inset: 0; pointer-events: none; }
 .marker,
 .ghost-marker {
   position: absolute;
-  top: 50%;
+  top: 40%;
   width: var(--marker-size);
   height: var(--marker-size);
   translate: -50% -50%;
@@ -601,12 +603,15 @@ body:has(.marker-ghost) { cursor: grabbing; }
 .marker.picked { box-shadow: 0 0 0 5px #fff, 0 0 22px var(--cyan); }
 .ghost-marker { border: 3px dashed #fff; background: rgb(255 255 255 / 0.2); }
 .ghost-marker.theirs { border-color: #ffd0c4; }
-.track-center { position: absolute; top: 0; bottom: 0; display: grid; place-items: center; background: var(--cream); z-index: 3; }
+/* The main action (end the turn, confirm, pass): a pill in the bottom-right corner, by the hand */
+.end-dock { position: absolute; right: 22px; bottom: 22px; z-index: 16; }
+.layout-phone .end-dock { right: 8px; bottom: 34px; }
 .track-btn {
-  width: calc(var(--marker-size) * 2.6);
-  height: calc(var(--marker-size) * 2.6);
-  border-radius: 50%;
-  border: 4px solid var(--gold);
+  min-width: calc(var(--marker-size) * 4);
+  height: calc(var(--marker-size) * 1.45);
+  padding: 0 calc(var(--marker-size) * 0.5);
+  border-radius: 999px;
+  border: 3px solid var(--gold);
   background: radial-gradient(circle at 40% 35%, #58a6ff 0%, #1f5fb8 60%, #123a78 100%);
   box-shadow: 0 0 0 4px rgb(20 16 50 / 0.55), 0 0 26px rgb(88 166 255 / 0.6);
   color: #fff;
@@ -622,13 +627,14 @@ body:has(.marker-ghost) { cursor: grabbing; }
 .track-btn:not(:disabled):active { transform: scale(0.95); }
 .track-btn:disabled { filter: grayscale(0.5) brightness(0.8); cursor: default; }
 .track-btn.hot { animation: arena-hot 1.4s ease-in-out infinite; }
-.track-btn.idle { background: radial-gradient(circle at 40% 35%, #4a4f74 0%, #22253f 70%); box-shadow: 0 0 0 4px rgb(20 16 50 / 0.55); position: relative; }
-.tb-label { font: 700 calc(var(--marker-size) * 0.36) / 1 var(--font-title); text-transform: uppercase; letter-spacing: 0.03em; text-align: center; }
+.track-btn.idle { background: radial-gradient(ellipse at 40% 35%, #4a4f74 0%, #22253f 70%); box-shadow: 0 0 0 4px rgb(20 16 50 / 0.55); flex-direction: row; gap: 0.6em; }
+.tb-label { font: 700 calc(var(--marker-size) * 0.42) / 1 var(--font-title); text-transform: uppercase; letter-spacing: 0.03em; text-align: center; }
 .tb-small { font: 600 calc(var(--marker-size) * 0.22) / 1 var(--font-text); letter-spacing: 0.08em; text-transform: uppercase; color: #9ff0cf; }
 .track-btn.idle .tb-small { color: #c9c3ef; }
 .tb-ring {
-  position: absolute;
-  inset: 6px;
+  width: calc(var(--marker-size) * 0.4);
+  height: calc(var(--marker-size) * 0.4);
+  box-sizing: border-box;
   border-radius: 50%;
   border: 3px solid rgb(255 255 255 / 0.15);
   border-top-color: var(--cyan);
@@ -1038,3 +1044,154 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
   100% { opacity: 0; }
 }
 @keyframes arena-rotate { 50% { transform: rotate(-90deg); } }
+
+/* ---------------------------------------------------------------- opponent passed */
+/* Over the opponent's zone and expeditions; below the pick overlays (6), so targets stay bright */
+.passed-veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 5;
+  pointer-events: none;
+  animation: pv-in 0.6s ease-out;
+}
+.passed-veil::before {
+  content: '';
+  position: absolute;
+  inset: 0 -700px;
+  background: rgb(6 8 20 / 0.42);
+  backdrop-filter: saturate(0.35) brightness(0.85);
+}
+@keyframes pv-in { from { opacity: 0; } }
+
+/* ---------------------------------------------------------------- revealed cards */
+/* A card revealed on top of a deck: face up on the pile until it is drawn */
+.pile-revealed {
+  position: absolute;
+  inset: -2px;
+  border-radius: 8px;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 2px rgb(217 180 106 / 0.35), 0 0 16px rgb(217 180 106 / 0.6);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 2;
+}
+.pile-revealed img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pile-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  translate: -50% 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(20 16 36 / 0.88);
+  color: var(--gold);
+  font: 700 calc(var(--zone-card-w) * 0.13) / 1 var(--font-title);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* The reveal itself: from the deck to the middle of the screen, face up, then where it goes */
+.reveal-show { position: fixed; perspective: 1400px; will-change: transform, opacity; }
+.reveal-card { position: absolute; inset: 0; transform-style: preserve-3d; }
+.reveal-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 3px solid var(--gold);
+  background: #1a1830 center / cover no-repeat;
+  backface-visibility: hidden;
+  box-shadow: 0 0 0 4px rgb(217 180 106 / 0.25), 0 0 40px rgb(217 180 106 / 0.45), 0 24px 40px rgb(0 0 0 / 0.6);
+}
+.reveal-back { background-image: url('/img/card-back.jpg'); transform: rotateY(180deg); }
+.reveal-caption {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 14px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  border: 1px solid rgb(217 180 106 / 0.6);
+  background: rgb(14 12 30 / 0.92);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.5);
+  white-space: nowrap;
+  text-align: center;
+}
+.reveal-who { font: 600 15px / 1.2 var(--font-text); color: #d8d2ea; }
+.reveal-outcome { font: 700 19px / 1.1 var(--font-title); letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
+.reveal-outcome.to-hand { color: var(--me); }
+.reveal-outcome.to-deck { color: #c9c2dc; }
+
+/* ---------------------------------------------------------------- actions of a tapped card */
+/* Tapping a spell casts it from the arc above the card, not from the track */
+.arena .track-drop.drop-valid { outline: none; background: none; }
+.card-actions {
+  position: fixed;
+  z-index: 115;
+  translate: -50% calc(-100% - 12px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  animation: ca-in 0.18s ease-out;
+}
+.card-actions > * { pointer-events: auto; }
+@keyframes ca-in { from { opacity: 0; translate: -50% calc(-100% + 4px); } }
+.ca-side {
+  width: 44px;
+  height: 44px;
+  margin-top: 30px;
+  border-radius: 50%;
+  border: 1px solid rgb(243 233 210 / 0.55);
+  background: rgb(14 12 30 / 0.92);
+  color: var(--cream);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.5);
+}
+.ca-side:hover { background: #2a2350; }
+.ca-main {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 3px solid var(--cream);
+  background: radial-gradient(circle at 50% 35%, #3a3470, #1d1840 70%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  cursor: pointer;
+  font: 700 13px / 1 var(--font-title);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 22px rgb(0 0 0 / 0.55);
+}
+.ca-main.ca-cast { background: radial-gradient(circle at 50% 35%, #8a6cff, #4a2fb0 70%); box-shadow: 0 0 0 4px rgb(138 108 255 / 0.3), 0 10px 22px rgb(0 0 0 / 0.55); }
+.ca-main:hover:not(:disabled) { filter: brightness(1.12); }
+.ca-main:disabled { opacity: 0.6; cursor: default; }
+.ca-cost {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(#5cc8ff, #009ee3);
+  border: 2px solid #0b1430;
+  color: #fff;
+  font: 700 16px / 1 var(--font-title);
+  letter-spacing: 0;
+}

@@ -18,6 +18,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod ais;
 mod engines;
 mod replays;
+mod reunion;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -80,6 +81,8 @@ struct AiPlayers {
 struct Ticket {
     name: String,
     deck: Option<String>,
+    /// An Altered Reunion deck, fetched when the player joined
+    reunion_deck: Option<Value>,
     /// Set when matched: (game id, player id, player token)
     matched: Option<(String, u32, String)>,
     created: u64,
@@ -96,6 +99,8 @@ struct AppState {
     decks_json: Vec<u8>,
     data_dir: std::path::PathBuf,
     ais: ais::AiDirs,
+    /// Client of decks-api (Altered Reunion decks)
+    http: reqwest::Client,
 }
 
 type Shared = Arc<AppState>;
@@ -149,6 +154,7 @@ async fn main() {
         decks_json: std::fs::read(format!("{}/decks.json", protocol_dir)).expect("protocol/data/decks.json"),
         data_dir: data_dir.clone(),
         ais: ais::AiDirs::from_env(),
+        http: reqwest::Client::builder().timeout(Duration::from_secs(15)).build().expect("HTTP client"),
     });
     altered_rules::managers::cards::classes();
 
@@ -169,6 +175,7 @@ async fn main() {
         .route("/api/v1/cards", get(cards))
         .route("/api/v1/decks", get(decks))
         .route("/api/v1/ais", get(list_ais))
+        .route("/api/v1/reunion-decks/{id}", get(reunion_deck))
         .route("/api/v1/games", post(create_game))
         .route("/api/v1/games/{id}", get(view_game))
         .route("/api/v1/games/{id}/answer", post(answer))
@@ -240,6 +247,21 @@ async fn decks(State(s): State<Shared>) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], s.decks_json.clone()).into_response()
 }
 
+/// An Altered Reunion deck (decks-api), checked by the engine: what the lobby shows before a game
+async fn reunion_deck(State(s): State<Shared>, Path(id): Path<String>) -> Response {
+    let deck = match reunion::fetch(&s.http, &id).await {
+        Ok(d) => d,
+        Err(e) if e.starts_with("Unknown deck") => return error(StatusCode::NOT_FOUND, e, true),
+        Err(e) => return error(StatusCode::BAD_REQUEST, e, true),
+    };
+    let d = deck.clone();
+    let checked = match s.pool.run(move || reunion::check(&d)).await {
+        Ok(c) => c,
+        Err(e) => Err(e),
+    };
+    Json(reunion::summary(&id, &deck, checked)).into_response()
+}
+
 /// The AIs a bot seat can play (read from their files at each request)
 async fn list_ais(State(s): State<Shared>) -> Response {
     let s2 = s.clone();
@@ -286,6 +308,9 @@ struct NewPlayer {
     deck: Option<String>,
     /// A bot seat: the AI that plays it (`GET /api/v1/ais`), the simple bot by default
     ai: Option<String>,
+    /// An Altered Reunion deck: its decks-api id
+    #[serde(rename = "reunionDeck")]
+    reunion_deck: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -361,7 +386,14 @@ async fn create_game(State(s): State<Shared>, Json(req): Json<NewGame>) -> Respo
                 return error(StatusCode::BAD_REQUEST, format!("Unknown deck {}", d), true);
             }
         }
-        let mut seat = NewSeat { name: clean_name(p.name.as_deref(), i), bot: p.bot, deck: p.deck.clone(), ai: None };
+        let reunion_deck = match p.reunion_deck.as_deref().filter(|_| !p.bot) {
+            Some(id) => match reunion::fetch(&s.http, id).await {
+                Ok(d) => Some(d),
+                Err(e) => return error(StatusCode::BAD_REQUEST, e, true),
+            },
+            None => None,
+        };
+        let mut seat = NewSeat { name: clean_name(p.name.as_deref(), i), bot: p.bot, deck: p.deck.clone(), ai: None, reunion_deck };
         // An AI plays its own deck, under its own name
         if let Some(ai) = p.ai.clone().filter(|a| p.bot && a != ais::SIMPLE) {
             let s2 = s.clone();
@@ -369,14 +401,17 @@ async fn create_game(State(s): State<Shared>, Json(req): Json<NewGame>) -> Respo
             let Ok(Some((name, deck))) = tokio::task::spawn_blocking(move || s2.ais.describe(&ai2)).await else {
                 return error(StatusCode::BAD_REQUEST, format!("Unknown AI {}", ai), true);
             };
-            seat = NewSeat { name, bot: true, deck: None, ai: Some((ai, deck)) };
+            seat = NewSeat { name, bot: true, deck: None, ai: Some((ai, deck)), reunion_deck: None };
         }
         seats.push(seat);
     }
     let seats: [NewSeat; 2] = seats.try_into().unwrap_or_else(|_| unreachable!());
+    // The engine refuses a Reunion deck it cannot play (not legal, card not implemented...)
+    let reunion = seats.iter().any(|s| s.reunion_deck.is_some());
     let id = new_game_id(&s);
     match insert_game(&s, id, seats, req.seed.unwrap_or_else(seed)).await {
         Ok(v) => Json(v).into_response(),
+        Err(e) if reunion => error(StatusCode::BAD_REQUEST, format!("Deck refused: {}", e), true),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e, false),
     }
 }
@@ -603,6 +638,9 @@ async fn ai_step(s: &Shared, e: &Arc<GameEntry>) -> Result<bool, String> {
 struct JoinQueue {
     name: Option<String>,
     deck: Option<String>,
+    /// An Altered Reunion deck: its decks-api id
+    #[serde(rename = "reunionDeck")]
+    reunion_deck: Option<String>,
 }
 
 async fn join_queue(State(s): State<Shared>, Json(req): Json<JoinQueue>) -> Response {
@@ -613,6 +651,20 @@ async fn join_queue(State(s): State<Shared>, Json(req): Json<JoinQueue>) -> Resp
             return error(StatusCode::BAD_REQUEST, format!("Unknown deck {}", d), true);
         }
     }
+    // A Reunion deck is fetched and checked now: the game is created only when another player joins
+    let reunion_deck = match req.reunion_deck.as_deref() {
+        Some(id) => match reunion::fetch(&s.http, id).await {
+            Ok(d) => {
+                let d2 = d.clone();
+                if let Err(e) = s.pool.run(move || reunion::check(&d2)).await.and_then(|c| c) {
+                    return error(StatusCode::BAD_REQUEST, format!("Deck refused: {}", e), true);
+                }
+                Some(d)
+            }
+            Err(e) => return error(StatusCode::BAD_REQUEST, e, true),
+        },
+        None => None,
+    };
     let mut queue = s.queue.lock().await;
     queue.retain(|_, t| t.matched.is_some() || now() - t.created < 120);
     let waiting = queue.iter().find(|(_, t)| t.matched.is_none()).map(|(k, t)| (k.clone(), t.clone()));
@@ -620,8 +672,8 @@ async fn join_queue(State(s): State<Shared>, Json(req): Json<JoinQueue>) -> Resp
         Some((other_id, other)) => {
             let id = new_game_id(&s);
             let seats = [
-                NewSeat { name: other.name.clone(), bot: false, deck: other.deck.clone(), ai: None },
-                NewSeat { name: name.clone(), bot: false, deck: req.deck.clone(), ai: None },
+                NewSeat { name: other.name.clone(), bot: false, deck: other.deck.clone(), ai: None, reunion_deck: other.reunion_deck.clone() },
+                NewSeat { name: name.clone(), bot: false, deck: req.deck.clone(), ai: None, reunion_deck: reunion_deck.clone() },
             ];
             let created = match insert_game(&s, id.clone(), seats, seed()).await {
                 Ok(v) => v,
@@ -629,13 +681,13 @@ async fn join_queue(State(s): State<Shared>, Json(req): Json<JoinQueue>) -> Resp
             };
             let token = |i: usize| created["players"][i]["token"].as_str().unwrap_or("").to_string();
             queue.get_mut(&other_id).unwrap().matched = Some((id.clone(), 2001, token(0)));
-            queue.insert(ticket_id.clone(), Ticket { name, deck: req.deck, matched: Some((id.clone(), 2002, token(1))), created: now() });
+            queue.insert(ticket_id.clone(), Ticket { name, deck: req.deck, reunion_deck, matched: Some((id.clone(), 2002, token(1))), created: now() });
             drop(queue);
             s.queue_changed.notify_waiters();
             Json(json!({"ticket": ticket_id, "status": "matched", "gameId": id, "player": 2002, "token": token(1)})).into_response()
         }
         None => {
-            queue.insert(ticket_id.clone(), Ticket { name, deck: req.deck, matched: None, created: now() });
+            queue.insert(ticket_id.clone(), Ticket { name, deck: req.deck, reunion_deck, matched: None, created: now() });
             Json(json!({"ticket": ticket_id, "status": "waiting"})).into_response()
         }
     }

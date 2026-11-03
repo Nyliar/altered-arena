@@ -36,7 +36,7 @@ fn play_out(g: &mut Game) -> usize {
 
 fn main() {
     let n: i64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(20);
-    let players = [NewPlayer { name: "A".into(), bot: false, deck: Some("ax_1_sierra".into()), api_deck: None }, NewPlayer { name: "B".into(), bot: true, deck: None, api_deck: None }];
+    let players = [NewPlayer { name: "A".into(), bot: false, deck: Some("ax_1_sierra".into()), api_deck: None, reunion_deck: None }, NewPlayer { name: "B".into(), bot: true, deck: None, api_deck: None, reunion_deck: None }];
     let (mut game_s, mut decisions, mut clone_s, mut clones, mut playout_s, mut playouts, mut bytes) = (0.0, 0, 0.0, 0, 0.0, 0, 0);
     for seed in 1..=n {
         // Game::create would run two bots to the end: player 2001 is human at creation, then a bot

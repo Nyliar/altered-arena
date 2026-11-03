@@ -386,8 +386,18 @@ namespace {
     public function getSeedInfo(): array { return []; }
   }
 
+  /**
+   * $this->tableOptions of the BGA framework: the table options BGA sets (201: rating mode), which
+   * the game only forwards to the publisher API; the arena's tables are not rated (0)
+   */
+  class TableOptions
+  {
+    public function get(int $id): int { return 0; }
+  }
+
   abstract class Table extends APP_GameClass
   {
+    public TableOptions $tableOptions;
     public $table_id = 1;
     public object $bga;
     /** 'studio' or 'prod': some code paths differ (debug dice, end-of-game messages) */
@@ -419,6 +429,7 @@ namespace {
       }
       $this->gamestate = new GameState($this, $machinestates);
       $this->bga = (object) ['tournament' => new BgaTournament()];
+      $this->tableOptions = new TableOptions();
       $this->gameinfos = $gameinfos;
       $this->stats_type = $stats_type;
     }

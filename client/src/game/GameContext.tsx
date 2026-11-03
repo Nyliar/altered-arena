@@ -4,6 +4,7 @@ import { affordances, autoAnswer, emptyUI, hasActions, togglePick, type Affordan
 import type { AnswerBody } from './useGame';
 import { useInspect } from './inspect';
 import { cardDef } from '../api/catalog';
+import { confirmTurnPref } from '../screens/storage';
 
 export interface GameCtxValue {
   view: GameView;
@@ -95,7 +96,7 @@ export function GameProvider({
 
   // Decisions without a real choice are answered for the player (once each: not again after an error)
   const [repeat, setRepeat] = useState<string | null>(null);
-  const auto = useMemo(() => autoAnswer(decision, repeat), [decision, repeat]);
+  const auto = useMemo(() => autoAnswer(decision, repeat, confirmTurnPref()), [decision, repeat]);
   const autoDone = useRef<string | null>(null);
   const [autoFailed, setAutoFailed] = useState<string | null>(null);
   // Shown as resolving until the answer is in (a late view may still carry the decision)

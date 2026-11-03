@@ -78,11 +78,11 @@ export function forecast(view: GameView, player: PlayerView, side: Side): Foreca
 }
 
 /**
- * Track geometry: 11 equal units, [cap | r0 | r1 r2 | r3 | button | r4 | r5 r6 | r7 | cap].
- * Center of region i, in units from the left.
+ * Track geometry: 10 equal units, [cap | r0 | r1 r2 | r3 r4 | r5 r6 | r7 | cap], one Tumult card
+ * per two units. Center of region i, in units from the left.
  */
-export const TRACK_UNITS = 11;
+export const TRACK_UNITS = 10;
 export function regionCenter(i: number): number {
-  return i <= 3 ? i + 1.5 : i + 2.5;
+  return i + 1.5;
 }
 

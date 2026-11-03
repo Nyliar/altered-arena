@@ -11,12 +11,15 @@ fn data() -> Value {
     serde_json::from_str(include_str!("data/v1_games_php.json")).unwrap()
 }
 
-/// What is not compared: the log (texts made from the translation's notifications), the
+/// What is not compared: the log (texts made from the translation's notifications) and the
+/// reveals drawn from it, the
 /// sequence numbers (number of notifications) and the decision ids made from them
 fn strip(v: &Value) -> Value {
     let mut v = v.clone();
     if let Some(m) = v.as_object_mut() {
         m.remove("log");
+        // Made from the log lines, as the log
+        m.remove("reveals");
         m.remove("seq");
         if let Some(d) = m.get_mut("decision").and_then(Value::as_object_mut) {
             d.remove("id");
@@ -87,7 +90,7 @@ fn run() {
             .as_array()
             .unwrap()
             .iter()
-            .map(|p| NewPlayer { name: p["name"].as_str().unwrap_or("").to_string(), bot: p["bot"].as_bool().unwrap_or(false), deck: p["deck"].as_str().map(String::from), api_deck: None })
+            .map(|p| NewPlayer { name: p["name"].as_str().unwrap_or("").to_string(), bot: p["bot"].as_bool().unwrap_or(false), deck: p["deck"].as_str().map(String::from), api_deck: None, reunion_deck: None })
             .collect();
         let dice: Vec<i64> = cfg["dice"].as_array().unwrap().iter().filter_map(Value::as_i64).collect();
         let game_id = r["phpGame"].as_i64().unwrap();

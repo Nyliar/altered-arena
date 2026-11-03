@@ -1,12 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiSummary, PlayerId } from '@protocol';
+import type { AiSummary, PlayerId, ReunionDeckSummary } from '@protocol';
 import { useCatalog, useDecks } from '../api/catalog';
 import { api, ApiError } from '../api/client';
 import { InspectProvider } from '../game/inspect';
 import { DeckGrid } from '../components/Picker';
+import { ReunionDeckPicker } from '../components/ReunionDeck';
 import { Inspector } from '../components/Inspector';
 import { toast } from '../game/toasts';
-import { lastGame, saveDeck, savedDeck, savedName, saveName, saveToken } from './storage';
+import {
+  confirmTurnPref,
+  type DeckSource,
+  lastGame,
+  saveConfirmTurnPref,
+  saveDeck,
+  saveDeckSource,
+  savedDeck,
+  savedDeckSource,
+  savedName,
+  savedReunionDeck,
+  saveName,
+  saveReunionDeck,
+  saveToken,
+} from './storage';
 import './Lobby.css';
 
 type Mode = 'bot' | 'match' | 'hotseat' | 'join';
@@ -17,7 +32,10 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
   const [mode, setMode] = useState<Mode>('bot');
   const [name, setName] = useState(savedName() || 'Player');
   const [name2, setName2] = useState('Player 2');
+  const [confirmTurn, setConfirmTurn] = useState(confirmTurnPref);
   const [deck, setDeck] = useState<string | null>(savedDeck());
+  const [source, setSource] = useState<DeckSource>(savedDeckSource());
+  const [reunion, setReunion] = useState<ReunionDeckSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [hotseat, setHotseat] = useState<{ gameId: string; players: { id: PlayerId; name: string; token?: string }[] } | null>(null);
   const [ticket, setTicket] = useState<string | null>(null);
@@ -36,13 +54,22 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
 
   const fail = (e: unknown) => toast(e instanceof ApiError ? e.message : String(e));
 
+  /** The deck of the player: a starter deck, or an Altered Reunion deck the engine plays */
+  const chosen: { deck: string } | { reunionDeck: string } | null =
+    source === 'reunion' ? (reunion?.playable ? { reunionDeck: reunion.id } : null) : deck ? { deck } : null;
+  function rememberDeck() {
+    saveDeckSource(source);
+    if (source === 'reunion' && reunion) saveReunionDeck(reunion.id);
+    if (source === 'starter' && deck) saveDeck(deck);
+  }
+
   async function startBot() {
-    if (!deck) return;
+    if (!chosen) return;
     setBusy(true);
     saveName(name);
-    saveDeck(deck);
+    rememberDeck();
     try {
-      const g = await api.createGame({ players: [{ name: name || 'Player', deck }, { name: 'Bot', bot: true, ai }] });
+      const g = await api.createGame({ players: [{ name: name || 'Player', ...chosen }, { name: 'Bot', bot: true, ai }] });
       onJoin(g.gameId, g.players[0].id, g.players[0].token);
     } catch (e) {
       fail(e);
@@ -67,12 +94,12 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
 
   /** Matchmaking: join the queue, then long poll the ticket until matched */
   async function findOpponent() {
-    if (!deck) return;
+    if (!chosen) return;
     saveName(name);
-    saveDeck(deck);
+    rememberDeck();
     setBusy(true);
     try {
-      let t = await api.matchmake(name || 'Player', deck);
+      let t = await api.matchmake(name || 'Player', chosen);
       ticketRef.current = t.ticket;
       setTicket(t.ticket);
       while (t.status !== 'matched' && ticketRef.current === t.ticket) {
@@ -130,6 +157,18 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
           </a>
         </header>
 
+        <label className="pref">
+          <input
+            type="checkbox"
+            checked={confirmTurn}
+            onChange={(e) => {
+              setConfirmTurn(e.target.checked);
+              saveConfirmTurnPref(e.target.checked);
+            }}
+          />
+          <span>Confirm the end of my turn (a short countdown with Undo)</span>
+        </label>
+
         <div className="lobby-tabs" role="tablist">
           {(
             [
@@ -180,24 +219,55 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
                 </select>
               </label>
             )}
-            <h2>Choose a starter deck</h2>
-            {decks && catalog ? (
+            <h2>Choose a deck</h2>
+            <div className="deck-source" role="tablist" aria-label="Deck">
+              {(
+                [
+                  ['starter', 'Starter decks'],
+                  ['reunion', 'My Altered Reunion deck'],
+                ] as [DeckSource, string][]
+              ).map(([src, label]) => (
+                <button
+                  key={src}
+                  type="button"
+                  role="tab"
+                  aria-selected={source === src}
+                  className={`tab ${source === src ? 'on' : ''}`}
+                  onClick={() => setSource(src)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {source === 'reunion' ? (
+              <ReunionDeckPicker catalog={catalog} initialId={savedReunionDeck()} onChange={setReunion} />
+            ) : decks && catalog ? (
               <DeckGrid decks={decks} catalog={catalog} selected={deck} onSelect={(d) => setDeck(d.id)} />
             ) : (
               <p className="muted">Loading decks…</p>
             )}
             <div className="lobby-cta">
-              <span className="muted">{selectedDeck ? `Deck: ${selectedDeck.name}` : 'Pick a deck'}</span>
-              <button
-                type="button"
-                className="btn"
-                disabled={!decks}
-                onClick={() => decks && setDeck(decks[Math.floor(Math.random() * decks.length)].id)}
-              >
-                Random
-              </button>
+              <span className="muted">
+                {source === 'reunion'
+                  ? reunion?.playable
+                    ? `Deck: ${reunion.name}`
+                    : 'Paste the link of a deck'
+                  : selectedDeck
+                    ? `Deck: ${selectedDeck.name}`
+                    : 'Pick a deck'}
+              </span>
+              {source === 'starter' && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!decks}
+                  onClick={() => decks && setDeck(decks[Math.floor(Math.random() * decks.length)].id)}
+                >
+                  Random
+                </button>
+              )}
               {mode === 'bot' ? (
-                <button type="button" className="btn primary big" disabled={!deck || busy} onClick={startBot}>
+                <button type="button" className="btn primary big" disabled={!chosen || busy} onClick={startBot}>
                   {busy ? 'Starting…' : 'Play'}
                 </button>
               ) : ticket ? (
@@ -209,7 +279,7 @@ export function Lobby({ onJoin }: { onJoin: (gameId: string, player: PlayerId, t
                   </button>
                 </>
               ) : (
-                <button type="button" className="btn primary big" disabled={!deck || busy} onClick={findOpponent}>
+                <button type="button" className="btn primary big" disabled={!chosen || busy} onClick={findOpponent}>
                   Find an opponent
                 </button>
               )}

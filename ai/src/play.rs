@@ -140,7 +140,7 @@ pub fn new_game(decks: &[Value; 2], seed: u64) -> Result<Game, String> {
     let players: Vec<NewPlayer> = ["A", "B"]
         .iter()
         .enumerate()
-        .map(|(i, n)| NewPlayer { name: n.to_string(), bot: false, deck: None, api_deck: Some(decks[i].clone()) })
+        .map(|(i, n)| NewPlayer { name: n.to_string(), bot: false, deck: None, api_deck: Some(decks[i].clone()), reunion_deck: None })
         .collect();
     Game::create(seed as i64 % 1_000_000_000 + 1, &players, &dice_for(seed)).map_err(|e| format!("create: {}", e))
 }

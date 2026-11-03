@@ -14,6 +14,7 @@ pub mod managers;
 pub mod models;
 pub mod php;
 pub mod php_rand;
+pub mod reunion;
 pub mod states;
 pub mod v1;
 
@@ -106,6 +107,11 @@ impl Game {
     /// One decision of a bot player (false: none to take, or none accepted)
     pub fn run_bot_step(&mut self) -> Result<bool, PhpError> {
         arena::bot_step(self)
+    }
+
+    /// Night cleanups once the winner is known: answered for the players (see `arena`)
+    pub fn skip_decided_cleanups(&mut self) -> Result<bool, PhpError> {
+        arena::skip_decided_cleanups(self)
     }
 
     /// The game is over (state `gameEnd`)

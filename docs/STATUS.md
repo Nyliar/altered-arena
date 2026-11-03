@@ -25,13 +25,27 @@
 
 ## Known differences and limits
 
+- Rules changes from BGA (`docs/patches`, applied to the oracle by `tools/php_reference.sh`, and in
+  the Rust card data exported from it): Angry Crowd (YZ / OD Rare) and Partial Referee (YZ Common /
+  Rare, MU Rare) ask for their target first, then read its Base Cost for the Manaseed / the draw
+  (`target-then-base-cost.patch`); on BGA the player first chooses a cost range.
+
 - The PHP engine's quirks are reproduced on purpose (e.g. the `array_push` bug in the phase
   listeners, MoveCard's undefined action): the reference is what BGA does.
 - The GameView follows the PHP adapter (`server/src/V1.php`): play options have no cost of their
   own (the client shows the card's cost), card stats are printed stats plus boosts, and the log is
   built from the PHP notification templates, shorter than BGA's.
-- Decks: starter decks only. Custom decks (deck codes), random and API decks, and the DEMO format
-  raise "not translated".
+- Decks: starter decks and Altered Reunion decks. A new game's `reunionDeck` (a decks-api id) is
+  fetched by the server (`DECKS_API_URL`, `GET /api/bga/decks/{id}`), converted to what the publisher
+  API answers BGA (`rules::reunion`: altered-bga-api is not public, its format is rebuilt from what
+  the game reads and from the API decks of the BGA replays), then goes through `actGetDeckInfos` and
+  `actConfirmAPIDeck` as on BGA (`Cards::getCardClass`, `Cards::generateUnique`,
+  `Helpers/FlowConvertor.php` translated). Checked by goldens: 173,182 Uniques (`uniques/`), 18,425
+  card references (`cardclass/`), 440 games created with a synthetic deck (`apidecks/`) and 200 with
+  real public decks (`apidecks_real/`). The lobby takes the link of a deck (`GET /api/v1/reunion-decks/{id}`:
+  the deck and whether the engine plays it). Not ported: the deck list of a player (`actLoadAPIDecks`, it
+  needs an account), random decks and the DEMO format. The format of the table is not checked: any
+  legal deck plays.
 - The bot is the oracle's simple bot (first legal choices). When both of its answers are refused,
   it tries the other legal answers instead of stopping the game (PHP would wait forever).
 - Speed: the translated engine is about 4 times slower in CPU and 5 times larger in memory than the
@@ -44,6 +58,7 @@
 ## Next steps (suggested)
 
 1. Compact persistence (save only each card's own values), then measure the VPS-1 capacity again.
-2. Custom decks (deck codes) and Unique cards (`Helpers/FlowConvertor.php` builds their effects).
+2. Accounts (Keycloak of Altered Reunion) to list a player's decks in the lobby (today the player
+   pastes the link of a deck).
 3. WebSocket push, the engine in WebAssembly for offline play, native shells (Capacitor, Tauri).
 4. Accounts, ranked matchmaking, tournaments.

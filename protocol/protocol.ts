@@ -9,10 +9,11 @@
  * HTTP API (JSON):
  *   GET  /api/v1/cards                       -> CardCatalog (static data of every card)
  *   GET  /api/v1/decks                       -> DeckSummary[] (starter decks)
+ *   GET  /api/v1/reunion-decks/{id}          -> ReunionDeckSummary (an Altered Reunion deck, checked by the engine)
  *   POST /api/v1/games       NewGame         -> GameCreated
  *   GET  /api/v1/games/{id}?player=P&token=T[&since=seq] -> GameView (with since: waits up to 20 s for a newer seq)
  *   POST /api/v1/games/{id}/answer?player=P&token=T  Answer -> GameView | ErrorResponse
- *   POST /api/v1/matchmaking  {name, deck}    -> MatchTicket (status 'waiting' or 'matched')
+ *   POST /api/v1/matchmaking  {name, deck, reunionDeck} -> MatchTicket (status 'waiting' or 'matched')
  *   GET  /api/v1/matchmaking/{ticket}         -> MatchTicket (long poll, up to 20 s)
  *   DELETE /api/v1/matchmaking/{ticket}       leave the queue
   * Authentication: each human seat gets a secret `token` when the game is created (GameCreated)
@@ -84,6 +85,22 @@ export interface DeckSummary {
   faction: Faction;
   heroRef: string;
   size: number;
+}
+
+/** An Altered Reunion deck (decks-api id), as the server reads it and the engine checks it */
+export interface ReunionDeckSummary {
+  id: string;
+  name: string;
+  faction: Faction | null;
+  /** Catalog key of the hero (null when the engine does not know it) */
+  heroRef: string | null;
+  size: number;
+  /** decks-api's verdict */
+  legal: boolean;
+  /** The engine plays it (a game can be created with it) */
+  playable: boolean;
+  /** Why the engine refuses it */
+  problem?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +179,17 @@ export interface LogEntry {
   player?: PlayerId;
 }
 
+/** A card revealed from the top of a deck ("Reveal the top card of your deck..."), seen by both
+ * players, and where it is now: still on top of the deck (face up), drawn, in Reserve... */
+export interface RevealView {
+  seq: number; // the log entry of the reveal
+  player: PlayerId; // whose deck
+  cardId: number;
+  ref: string | null;
+  unique?: CardDef;
+  to: 'deck' | 'hand' | 'reserve' | 'discard' | 'board';
+}
+
 export interface GameView {
   gameId: string;
   you: PlayerId | null; // null for a spectator
@@ -179,6 +207,8 @@ export interface GameView {
   decision: Decision | null; // what `you` must decide now
   waitingFor: PlayerId[]; // players who must decide
   log: LogEntry[]; // most recent entries (up to 40): clients merge them into their own history
+  /** The latest cards revealed from the top of a deck (not sent by the PHP oracle) */
+  reveals?: RevealView[];
 }
 
 // ---------------------------------------------------------------------------
@@ -355,8 +385,11 @@ export type Answer = { decisionId: string } & (
 
 export interface NewGame {
   // deck: DeckSummary id, else chosen in game. ai: for a bot seat, the AiSummary id of the AI that plays it
-  // (the simple bot by default); an AI plays its own deck under its own name (deck and name are ignored)
-  players: { name: string; bot?: boolean; deck?: string; ai?: string }[];
+  // (the simple bot by default); an AI plays its own deck under its own name (deck and name are ignored).
+  // reunionDeck: an Altered Reunion deck, its decks-api id (a UUID, the deck must be public or the
+  // player's): the server fetches it; a deck the engine refuses (not legal, card or Unique power not
+  // implemented) gives an ErrorResponse (400, user: true) and no game
+  players: { name: string; bot?: boolean; deck?: string; ai?: string; reunionDeck?: string }[];
   seed?: number;
 }
 

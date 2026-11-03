@@ -32,6 +32,8 @@ pub struct NewSeat {
     pub deck: Option<String>,
     /// An AI seat (a bot the server plays, not the engine): the AI's id and its decklist
     pub ai: Option<(String, Value)>,
+    /// An Altered Reunion deck, as the publisher API answers it (`reunion::publisher_response`)
+    pub reunion_deck: Option<Value>,
 }
 
 /// A game of the `rules` engine as the server keeps it (and saves it)
@@ -41,6 +43,15 @@ pub struct RulesGame {
     pub id: String,
     pub seats: Vec<SeatInfo>,
     pub game: altered_rules::Game,
+}
+
+impl RulesGame {
+    /// Once the winner is known, the Night cleanups are answered for the players: the game ends
+    fn skip_decided_cleanups(&mut self) {
+        if let Err(e) = self.game.skip_decided_cleanups() {
+            eprintln!("game {}: end of game cleanups: {}", self.id, e);
+        }
+    }
 }
 
 /// A game in the server (boxed: the engine state is large)
@@ -71,8 +82,8 @@ impl ServerGame {
         let new: Vec<NewPlayer> = players
             .iter()
             .map(|p| match &p.ai {
-                Some((_, deck)) => NewPlayer { name: p.name.clone(), bot: false, deck: None, api_deck: Some(deck.clone()) },
-                None => NewPlayer { name: p.name.clone(), bot: p.bot, deck: p.deck.clone(), api_deck: None },
+                Some((_, deck)) => NewPlayer { name: p.name.clone(), bot: false, deck: None, api_deck: Some(deck.clone()), reunion_deck: None },
+                None => NewPlayer { name: p.name.clone(), bot: p.bot, deck: p.deck.clone(), api_deck: None, reunion_deck: p.reunion_deck.clone() },
             })
             .collect();
         // The game id of the arena seeds the randomness of each act (Arena::seedRng)
@@ -134,6 +145,7 @@ impl ServerGame {
         if let Err(e) = g.game.run_bots() {
             eprintln!("game {}: bots: {}", g.id, e);
         }
+        g.skip_decided_cleanups();
         // The game now waits for a player
         g.game.compact();
     }
@@ -151,6 +163,7 @@ impl ServerGame {
             eprintln!("game {}: bots: {}", g.id, e);
             false
         });
+        g.skip_decided_cleanups();
         if !played {
             g.game.compact();
         }
@@ -215,7 +228,9 @@ impl ServerGame {
             // V1::answer: HttpError 409 for a stale decision, the engine's exceptions otherwise
             let stale = e.0 == "This decision is no longer current" || e.0 == "Nothing to decide";
             Refused { status: if stale { 409 } else { 400 }, msg: e.0, user: true }
-        })
+        })?;
+        g.skip_decided_cleanups();
+        Ok(())
     }
 
     /// Full hidden state (debug route)
@@ -278,6 +293,46 @@ impl EnginePool {
 mod tests {
     use super::*;
 
+    /// Human against the simple bot, the human answering its last legal candidate (keeps cards,
+    /// so that Night cleanups come up): once the winner is known, no cleanup is asked any more
+    #[test]
+    fn no_cleanup_once_the_game_is_decided() {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn(|| {
+                let mut cleanups = 0;
+                for seed in 1..=30 {
+                    let seats = [
+                        NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                        NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                    ];
+                    let mut g = ServerGame::new(format!("c{}", seed), seats, seed).unwrap();
+                    g.run_bots();
+                    let mut last = String::new();
+                    for _ in 0..5000 {
+                        if g.ended() {
+                            break;
+                        }
+                        let Some(d) = g.game().try_decision(2001).unwrap() else {
+                            g.run_bots();
+                            continue;
+                        };
+                        last = d["kind"].as_str().unwrap_or("").to_string();
+                        cleanups += (last == "cleanup") as usize;
+                        let ok = legal::candidates(&d).iter().any(|c| g.answer(0, &legal::with_id(&d, c)).is_ok());
+                        assert!(ok, "no answer accepted: {}", d);
+                        g.run_bots();
+                    }
+                    assert!(g.ended(), "game {} did not end", seed);
+                    assert_ne!(last, "cleanup", "game {}: a cleanup was asked after the winner was known", seed);
+                }
+                assert!(cleanups > 0, "no cleanup came up: the test checks nothing");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     /// A full game against an AI seat, both seats answering their first legal candidate: the AI
     /// seat's decisions come from `ai_decision` and go through `ai_answer` (needs the tournament
     /// decklists, server/goldens/tournament_decks.json, which are not in git)
@@ -293,8 +348,8 @@ mod tests {
             .stack_size(256 << 20)
             .spawn(move || {
                 let seats = [
-                    NewSeat { name: "Human".into(), bot: false, deck: Some("ax_1_sierra".into()), ai: None },
-                    NewSeat { name: "Player — Sierra & Oddball".into(), bot: true, deck: None, ai: Some(("deck:D01".into(), deck)) },
+                    NewSeat { name: "Human".into(), bot: false, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                    NewSeat { name: "Player — Sierra & Oddball".into(), bot: true, deck: None, ai: Some(("deck:D01".into(), deck)), reunion_deck: None },
                 ];
                 let mut g = ServerGame::new("t".into(), seats, 7).unwrap();
                 g.run_bots();

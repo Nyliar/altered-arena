@@ -1,5 +1,6 @@
-//! States/SetupTrait.php: game setup and deck selection (starter decks and confirmed API decks;
-//! the deck APIs, random decks and the DEMO format are not ported)
+//! States/SetupTrait.php: game setup and deck selection (starter decks, API decks read by
+//! actGetDeckInfos and confirmed; the deck list actLoadAPIDecks, random decks and the DEMO format
+//! are not ported)
 
 use crate::core::globals;
 use crate::framework;
@@ -124,6 +125,83 @@ pub fn act_select_preco_deck(g: &mut Game, choice: &Value) -> R<()> {
     let args = args_preco_deck_selection(g)?;
     g.notify_to(Some(p), "updateInitialPrecoDeckSelection", "", json!({"args": {"_private": php::get(php::get(&args, "_private"), &p.to_string())}}));
     update_active_players_preco_deck_selection(g)
+}
+
+/// `actGetDeckInfos($deckNumber)`: `deck` is what the publisher API returned to
+/// `get_player_deck_content` (the request, built from the deck number, the table and the tournament,
+/// only goes to that API): the deck must be legal; its hero, cards and Uniques become the deck
+/// content `actConfirmAPIDeck` receives, its tokens the art of the player's tokens. Returns the deck
+/// (stored for the player in `deckContent`).
+// PHP: States/SetupTrait.php:352
+pub fn act_get_deck_infos(g: &mut Game, deck: &Value) -> R<Value> {
+    let mut deck = deck.clone();
+    let mut deck_content = php::arr();
+
+    if php::loose_ne(php::get(&deck, "legality"), &json!(true)) {
+        return Err(PhpError::new("This deck is not legal"));
+    }
+
+    let hero = cards::get_card_class(&php::strval(php::get(&deck, "hero")))?;
+    php::set(&mut deck_content, "hero", json!({"card": hero.json(), "n": 1}));
+    let mut token_styles = globals::get(g, "tokenStyles")?;
+    let current = players::get_current_id(g).to_string();
+    for (card_ref, card) in php::entries(php::get(&deck, "cards")) {
+        // Token-art entries are synthesized by the API from an existing card
+        // entry, so they may carry a Unique's `content` while being keyed by the
+        // token reference. Uniques are keyed by refs no card class can resolve
+        // (e.g. ALT_CORE_B_AX_08_U_29), so route on the key, never on `content`.
+        if is_unique_ref(&card_ref) {
+            if !php::isset(card, "content") {
+                return Err(PhpError::new(format!("MISSING UNIQUE CONTENT###{}", card_ref)));
+            }
+            let content = php::get(card, "content");
+            //it's a unique!
+            if cards::generate_unique(content)?.is_null() {
+                return Err(PhpError::new(format!("This unique has an unimplemented power{}", php::strval(php::get(content, "reference")))));
+            }
+            if php::in_array(php::get(content, "name"), &json!(["Moonlight Jellyfish"])) {
+                return Err(PhpError::new(format!("The unique {} is temporarily suspended by Equinox", php::strval(php::get(content, "name")))));
+            }
+
+            php::push(&mut deck_content, json!({"card": {"properties": cards::generate_unique(content)?}, "n": 1}));
+            continue;
+        }
+
+        let card_obj = cards::get_card_class(&card_ref)?;
+        if card_obj.is_token() {
+            // Tokens are not part of the deck: they are references to know which
+            // art variant of each token the player chose on the deck builder.
+            // Keep the styling so tokens invoked in game can render with it.
+            let mut style = json!({"asset": card_obj.get_asset()});
+            if php::loose_ne(&card_obj.get_main_asset(), &json!("")) {
+                php::set(&mut style, "mainAsset", card_obj.get_main_asset());
+            }
+            if php::strict_eq(&card_obj.get_full_art(), &json!(true)) {
+                php::set(&mut style, "fullArt", json!(true));
+            }
+            php::set(php::get_mut(&mut token_styles, &current), &card_obj.class, style);
+            continue;
+        }
+        php::push(&mut deck_content, json!({"card": {"properties": Value::Object(card_obj.props)}, "n": php::get(card, "quantity")}));
+    }
+    globals::set(g, "tokenStyles", token_styles)?;
+    php::set(&mut deck, "cards", deck_content);
+    let mut g_content = globals::get(g, "deckContent")?;
+    php::set(&mut g_content, &current, deck.clone());
+    globals::set(g, "deckContent", g_content)?;
+
+    Ok(deck)
+}
+
+/// `preg_match('/_U_\d+$/', $cardRef)`
+fn is_unique_ref(card_ref: &str) -> bool {
+    match card_ref.rfind("_U_") {
+        Some(i) => {
+            let n = &card_ref[i + 3..];
+            !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+        }
+        None => false,
+    }
 }
 
 /// `actConfirmAPIDeck($deckContent)`: the deck content the client got from `actGetDeckInfos`

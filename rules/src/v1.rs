@@ -1154,6 +1154,7 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
             e
         })
         .collect();
+    let reveals = reveals(g, you)?;
     Ok(json!({
         "gameId": game_id,
         "you": you,
@@ -1169,7 +1170,34 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
         "decision": decision_v,
         "waitingFor": waiting,
         "log": log,
+        "reveals": reveals,
     }))
+}
+
+/// Not in PHP: the latest cards revealed from the top of a deck (the log lines that carry one),
+/// with their face and where they are now: still on top of the deck (`deck`), drawn (`hand`),
+/// placed in Reserve, or elsewhere (`discard`, `board`)
+fn reveals(g: &Game, you: Option<PId>) -> R<Vec<Value>> {
+    let lines: Vec<&LogLine> = crate::arena::log_for(g, you).into_iter().filter(|l| l.reveal.is_some()).collect();
+    let mut out = vec![];
+    for l in lines.iter().rev().take(10).rev() {
+        let id = l.reveal.unwrap_or(0);
+        let Ok(c) = g.card(id) else { continue };
+        let loc = c.location.as_str();
+        let to = if loc.starts_with("reveal-") {
+            "deck"
+        } else if loc == "hand" || loc == "reserve" || loc == "discard" {
+            loc
+        } else {
+            "board"
+        };
+        let mut e = json!({"seq": l.seq, "player": c.pid, "cardId": id, "ref": card_ref(g, id)?, "to": to});
+        if php::loose_eq(c.db_props.get("rarity").unwrap_or(&Value::Null), &json!(2)) {
+            e["unique"] = unique_def(&c.db_props);
+        }
+        out.push(e);
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1181,7 +1209,9 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
 fn notification_msg(name: &str, args: &Value) -> &'static str {
     match name {
         "drawCards" => {
-            if php::get(args, "to") == &json!("reserve") {
+            if php::strval(php::get(args, "to")).starts_with("reveal-") {
+                "${player_name} reveals ${card_names} from the top of its deck"
+            } else if php::get(args, "to") == &json!("reserve") {
                 "${player_name} places ${n} card(s) in reserve"
             } else {
                 "${player_name} draws ${n} card(s) from its deck"
@@ -1340,5 +1370,8 @@ pub fn log_line(g: &Game, n: &Value) -> Option<LogLine> {
     if text.is_empty() {
         return None;
     }
-    Some(LogLine { seq: php::intval(php::get(n, "seq")).max(0) as u64, text, player, target })
+    let reveal = (name == "drawCards" && php::strval(php::get(&args, "to")).starts_with("reveal-"))
+        .then(|| php::vals(php::get(&args, "cardIds")).first().map(|c| php::intval(c)))
+        .flatten();
+    Some(LogLine { seq: php::intval(php::get(n, "seq")).max(0) as u64, text, player, target, reveal })
 }

@@ -31,6 +31,14 @@ export const savedName = () => read<string>(KEY_NAME) ?? '';
 export const saveName = (n: string) => write(KEY_NAME, n);
 export const savedDeck = () => read<string>(KEY_DECK);
 export const saveDeck = (d: string) => write(KEY_DECK, d);
+const KEY_DECK_SOURCE = 'arena.deckSource';
+const KEY_REUNION_DECK = 'arena.reunionDeck';
+export type DeckSource = 'starter' | 'reunion';
+export const savedDeckSource = () => read<DeckSource>(KEY_DECK_SOURCE) ?? 'starter';
+export const saveDeckSource = (s: DeckSource) => write(KEY_DECK_SOURCE, s);
+/** The last Altered Reunion deck (decks-api id) */
+export const savedReunionDeck = () => read<string>(KEY_REUNION_DECK);
+export const saveReunionDeck = (id: string) => write(KEY_REUNION_DECK, id);
 export const forgetGame = (gameId: string) => {
   if (lastGame()?.gameId === gameId) {
     try {
@@ -57,3 +65,9 @@ export function saveToken(gameId: string, player: PlayerId, token: string | null
 export function tokenOf(gameId: string, player: PlayerId): string | null {
   return read<Tokens>(KEY_TOKENS)?.[gameId]?.[player] ?? null;
 }
+
+// Preferences of this device
+const KEY_CONFIRM_TURN = 'arena.confirmTurn';
+/** Wait a moment (with Undo) before the end of a turn is confirmed; off: confirmed at once */
+export const confirmTurnPref = () => read<boolean>(KEY_CONFIRM_TURN) ?? false;
+export const saveConfirmTurnPref = (on: boolean) => write(KEY_CONFIRM_TURN, on);

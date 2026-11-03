@@ -3,6 +3,7 @@ import type { CardView } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { useCardPointer } from '../game/useCardPointer';
 import { Card } from '../components/Card';
+import { revealedOnTop } from './reveals';
 
 /**
  * The card whose effect the current decision resolves, shown large: the spell being cast (in limbo),
@@ -10,7 +11,9 @@ import { Card } from '../components/Card';
  */
 function useFocus(): { card: CardView; casting: boolean } | null {
   const { view, decision, byId } = useGameCtx();
-  const limbo = view.cards.filter((c) => c.zone === 'limbo');
+  // A card revealed on top of a deck is drawn there (Mat.tsx), not cast
+  const onTop = new Set(revealedOnTop(view).values());
+  const limbo = view.cards.filter((c) => c.zone === 'limbo' && !onTop.has(c.id));
   const source = decision?.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   if (source?.zone === 'limbo') return { card: source, casting: true };
   const targeting = decision?.kind === 'select' || decision?.kind === 'expedition';

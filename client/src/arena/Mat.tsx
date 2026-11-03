@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import type { Biome, PlayerView, Side, Zone } from '@protocol';
+import type { Biome, GameView, PlayerView, Side, Zone } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { toggleKey } from '../game/decisions';
 import { DropZone } from '../components/DropZone';
@@ -10,7 +10,8 @@ import { artUrl } from '../api/catalog';
 import { MatCard } from './MatCard';
 import { deckPatch, HERO_X, rowBackground, type ArenaLayout } from './layout';
 import { forecast, regionCenter, STORM_BACK, stormTiles, TRACK_UNITS, type StormTile } from './model';
-import { TrackButton } from './TrackButton';
+import { revealedOnTop } from './reveals';
+import { useCardPointer } from '../game/useCardPointer';
 import { ManaBar } from './Hud';
 import { HeroMarkers, MARKED_SHIFT, RegionMarkers, regionBiomes } from './TerrainMarkers';
 
@@ -40,8 +41,22 @@ function useExpeditionPick(player: PlayerView | undefined, side: Side) {
 // Player zones: discard, deck, Reserve, Landmarks
 // ---------------------------------------------------------------------------
 
+/** A card revealed on top of the deck: face up there until it is drawn */
+function RevealedTop({ id }: { id: number }) {
+  const { byId, def } = useGameCtx();
+  const { handlers } = useCardPointer(id);
+  const d = def(byId.get(id));
+  return (
+    <span className="pile-revealed" data-card-id={id} title={`Revealed on top of the deck: ${d?.name ?? ''}`} {...handlers}>
+      {d && <img src={artUrl(d)} alt={d.name} draggable={false} />}
+      <span className="pile-tag">Revealed</span>
+    </span>
+  );
+}
+
 function Piles({ player }: { player: PlayerView }) {
-  const { zoneCards, def } = useGameCtx();
+  const { zoneCards, def, view } = useGameCtx();
+  const revealed = revealedOnTop(view).get(player.id);
   const [open, setOpen] = useState(false);
   const discard = zoneCards(player.id, 'discard');
   const top = discard.at(-1);
@@ -62,6 +77,7 @@ function Piles({ player }: { player: PlayerView }) {
       </button>
       <div className="pile pile-deck" data-pile={`deck-${player.id}`} title={`Deck: ${player.deckCount}`}>
         {player.deckCount > 0 ? <img src="/img/card-back.jpg" alt="" draggable={false} /> : <span className="pile-empty" />}
+        {revealed !== undefined && <RevealedTop id={revealed} />}
         <b key={player.deckCount} className="pile-count">
           {player.deckCount}
         </b>
@@ -267,31 +283,36 @@ function MatBand({ l, row, player, mine }: { l: ArenaLayout; row: 1 | 3; player:
 // The Tumult track
 // ---------------------------------------------------------------------------
 
-/** One Tumult card (or half of one) drawn from the storm.jpg sprite, cropped to the track height. */
-function stormStyle(t: StormTile, u: number, h: number, part: 'full' | 'left' | 'right'): CSSProperties {
+/** One Tumult card drawn from the storm.jpg sprite, cropped to the track height. */
+function stormStyle(t: StormTile, u: number, h: number): CSSProperties {
   const tileH = (2 * u * 372) / 520;
   const y = -(t.id * tileH + (tileH - h) / 2);
-  // A flipped card shows its other half, upside down
-  const half = part === 'full' ? null : t.flipped ? (part === 'left' ? 'right' : 'left') : part;
-  const x = half === 'right' ? -u : 0;
   return {
-    width: part === 'full' ? 2 * u : u,
+    width: 2 * u,
     height: h,
     backgroundSize: `${2 * u}px auto`,
-    backgroundPosition: `${x}px ${y}px`,
+    backgroundPosition: `0 ${y}px`,
     transform: t.flipped ? 'rotate(180deg)' : undefined,
   };
 }
 
 /** Keyed by its card id at the call site: a card turned face up mounts again and plays its flip. */
-function Tile({ t, u, h, part, at }: { t: StormTile; u: number; h: number; part: 'full' | 'left' | 'right'; at: number }) {
+function Tile({ t, u, h, at }: { t: StormTile; u: number; h: number; at: number }) {
   return (
     <span
       className={`storm-tile ${t.id !== STORM_BACK ? 'reveal' : ''}`}
-      style={{ ...stormStyle(t, u, h, part), left: at * u }}
+      style={{ ...stormStyle(t, u, h), left: at * u }}
       aria-hidden="true"
     />
   );
+}
+
+/** Shift of a token whose region also holds the other player's: side by side, the opponent's on the left */
+const SHARED_SHIFT = 0.2;
+
+function sharesRegion(view: GameView, player: PlayerView, region: number) {
+  const o = view.players.find((p) => p.id !== player.id);
+  return !!o && (o.expeditions.hero.position === region || o.expeditions.companion.position === region);
 }
 
 function Marker({ player, side, mine, other }: { player: PlayerView; side: Side; mine: boolean; other: boolean }) {
@@ -299,9 +320,10 @@ function Marker({ player, side, mine, other }: { player: PlayerView; side: Side;
   const pick = useExpeditionPick(player, side);
   const exp = player.expeditions[side];
   // Both expeditions of a player in the same region: side by side, each on its way (the hero one
-  // goes right); a terrain marker: on its right
+  // goes right); both players there: side by side too; a terrain marker: on its right
   const marked = view.regions.some((r) => r.index === exp.position && r.marker);
-  const dx = (other ? (side === 'hero' ? 0.22 : -0.22) : 0) + (marked ? MARKED_SHIFT : 0);
+  const shared = sharesRegion(view, player, exp.position) ? (mine ? SHARED_SHIFT : -SHARED_SHIFT) : 0;
+  const dx = (other ? (side === 'hero' ? 0.22 : -0.22) : 0) + shared + (marked ? MARKED_SHIFT : 0);
   // As on BGA: an arrow on the side it would move to, at Dusk as things stand
   const moving = forecast(view, player, side).advances && view.phase !== 'night' && view.phase !== 'setup';
   const style: CSSProperties = { left: `${((regionCenter(exp.position) + dx) / TRACK_UNITS) * 100}%` };
@@ -325,7 +347,8 @@ function Ghost({ player, side, mine }: { player: PlayerView; side: Side; mine: b
   const f = forecast(view, player, side);
   if (!f.advances || view.phase === 'night' || view.phase === 'setup') return null;
   const next = Math.max(0, Math.min(7, f.next));
-  const dx = view.regions.some((r) => r.index === next && r.marker) ? MARKED_SHIFT : 0;
+  const shared = sharesRegion(view, player, next) ? (mine ? SHARED_SHIFT : -SHARED_SHIFT) : 0;
+  const dx = shared + (view.regions.some((r) => r.index === next && r.marker) ? MARKED_SHIFT : 0);
   return (
     <span
       className={`ghost-marker ${mine ? 'mine' : 'theirs'}`}
@@ -346,13 +369,12 @@ function MatTrack({ l }: { l: ArenaLayout }) {
   return (
     <div className="mat-row mat-trackrow" style={rowBackground(l, 2)}>
       <div className="track" style={{ width: trackW, height: h, left: HERO_X * l.plane.w - (TRACK_UNITS / 2) * u }}>
-        <DropZone destination="spell" className="track-drop" label="Cast">
-          <Tile key={`0-${t[0].id}`} t={t[0]} u={u} h={h} part="full" at={0} />
-          <Tile key={`1-${t[1].id}`} t={t[1]} u={u} h={h} part="full" at={2} />
-          <Tile key={`2l-${t[2].id}`} t={t[2]} u={u} h={h} part="left" at={4} />
-          <Tile key={`2r-${t[2].id}`} t={t[2]} u={u} h={h} part="right" at={6} />
-          <Tile key={`3-${t[3].id}`} t={t[3]} u={u} h={h} part="full" at={7} />
-          <Tile key={`4-${t[4].id}`} t={t[4]} u={u} h={h} part="full" at={9} />
+        <DropZone destination="spell" className="track-drop">
+          <Tile key={`0-${t[0].id}`} t={t[0]} u={u} h={h} at={0} />
+          <Tile key={`1-${t[1].id}`} t={t[1]} u={u} h={h} at={2} />
+          <Tile key={`2-${t[2].id}`} t={t[2]} u={u} h={h} at={4} />
+          <Tile key={`3-${t[3].id}`} t={t[3]} u={u} h={h} at={6} />
+          <Tile key={`4-${t[4].id}`} t={t[4]} u={u} h={h} at={8} />
           <RegionMarkers regions={regions} u={u} />
           {players.map((p) => {
             const mine = p.id === (you ?? me?.id);
@@ -367,23 +389,31 @@ function MatTrack({ l }: { l: ArenaLayout }) {
             );
           })}
         </DropZone>
-        {regions.map((r) => (
-          <span key={r.index} className="region-chips" style={{ left: regionCenter(r.index) * u }}>
-            {regionBiomes(r)?.map((b) => (
-              <span key={b} className={`tot-${b}`}>
-                <span className="tot-icon">
-                  <BiomeGlyph biome={b} />
+        {regions.map((r) => {
+          const biomes = regionBiomes(r);
+          // Face down: no biomes to show
+          if (!biomes?.length) return null;
+          return (
+            <span key={r.index} className="region-chips" style={{ left: regionCenter(r.index) * u }}>
+              {biomes.map((b) => (
+                <span key={b} className={`tot-${b}`}>
+                  <span className="tot-icon">
+                    <BiomeGlyph biome={b} />
+                  </span>
                 </span>
-              </span>
-            ))}
-          </span>
-        ))}
-        <div className="track-center" style={{ left: 5 * u, width: u }}>
-          <TrackButton />
-        </div>
+              ))}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+/** Over the opponent's side of the mat once they have passed (as on BGA): darker and duller */
+function PassedVeil({ l, player }: { l: ArenaLayout; player: PlayerView | undefined }) {
+  if (!player?.passed) return null;
+  return <div className="passed-veil" style={{ height: l.rows[0] + l.rows[1] }} title={`${player.name} passed: no more plays this Afternoon`} />;
 }
 
 /** The tilted mat: opponent zone, opponent expeditions, Tumult, my expeditions, my zone. */
@@ -394,6 +424,7 @@ export function Mat({ l }: { l: ArenaLayout }) {
     <>
       <MatZone l={l} row={0} player={opp} mine={false} />
       <MatBand l={l} row={1} player={opp} mine={false} />
+      <PassedVeil l={l} player={opp} />
       <MatTrack l={l} />
       <MatBand l={l} row={3} player={me} mine={mine} />
       <MatZone l={l} row={4} player={me} mine={mine} />

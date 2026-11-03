@@ -22,6 +22,9 @@ pub struct NewPlayer {
     /// Custom deck content (`apiDeck`: what `actConfirmAPIDeck` receives), confirmed right away
     /// for a human player
     pub api_deck: Option<Value>,
+    /// Reunion deck (`reunionDeck`: what the publisher API returns to `get_player_deck_content`),
+    /// read by `actGetDeckInfos` then confirmed right away for a human player
+    pub reunion_deck: Option<Value>,
 }
 
 /// `substr(preg_replace('/[^\p{L}\p{N} _-]/u', '', $name) ?: 'Player n', 0, 32)`
@@ -86,9 +89,20 @@ pub fn create_game(game_id: i64, players: &[NewPlayer], dice: &[i64]) -> R<Game>
     Ok(g)
 }
 
+/// `Arena::deckInfos($gameId, $playerId, $content)`: `actGetDeckInfos` as a request of the player
+/// (not an act: no seeding), the publisher API answering `content`; the deck as the client gets it
+// PHP: server/src/Arena.php:268
+pub fn deck_infos(g: &mut Game, pid: PId, content: &Value) -> R<Value> {
+    g.begin_request(Some(pid))?;
+    let deck = crate::states::setup::act_get_deck_infos(g, content)?;
+    store_notifications(g);
+    Ok(php::round_trip(&deck))
+}
+
 /// `V1::createGame($body)`: the game, then the decks chosen in the lobby are selected right away
 /// (each selection is an act of the player, after a view of the game); a custom deck (`apiDeck`)
-/// is confirmed with `actConfirmAPIDeck`
+/// is confirmed with `actConfirmAPIDeck`; a Reunion deck (`reunionDeck`) goes through
+/// `actGetDeckInfos`, then its result is confirmed
 // PHP: server/src/V1.php:40
 pub fn create_v1_game(game_id: i64, players: &[NewPlayer], dice: &[i64]) -> R<Game> {
     let mut g = create_game(game_id, players, dice)?;
@@ -97,6 +111,13 @@ pub fn create_v1_game(game_id: i64, players: &[NewPlayer], dice: &[i64]) -> R<Ga
             continue;
         }
         let pid = PLAYER_IDS[i];
+        if let Some(content) = p.reunion_deck.as_ref().filter(|d| !php::empty(d)) {
+            v1::build(&mut g, Some(pid), "")?;
+            let deck = deck_infos(&mut g, pid, content)?;
+            v1::act(&mut g, pid, "actConfirmAPIDeck", &json!([deck]))?;
+            run_bots(&mut g)?;
+            continue;
+        }
         if let Some(api) = p.api_deck.as_ref().filter(|d| !php::empty(d)) {
             v1::build(&mut g, Some(pid), "")?;
             v1::act(&mut g, pid, "actConfirmAPIDeck", &json!([api]))?;
@@ -221,6 +242,59 @@ fn last_resort(g: &mut Game, bot_id: PId) -> R<bool> {
     }
     eprintln!("bot {}: no answer accepted", bot_id);
     Ok(false)
+}
+
+/// Not in PHP: the winner is known once the expeditions have moved at Dusk (`Players::checkVictory`
+/// runs at the next Morning, from the expedition tokens, which the Night does not move). The
+/// Night cleanups still asked of the players (Reserve / Landmarks above their slots) change
+/// nothing then: they are answered for the players as the bot answers them, and the game ends.
+/// True when one was answered.
+pub fn skip_decided_cleanups(g: &mut Game) -> R<bool> {
+    let mut played = false;
+    for _ in 0..8 {
+        if !framework::state(g).is_some_and(|s| s.name == "nightCleanup") || !victory_decided(g)? {
+            break;
+        }
+        g.begin_request(None)?;
+        let mut answered = false;
+        for pid in crate::managers::players::get_all(g) {
+            if !framework::is_player_active(g, pid) {
+                continue;
+            }
+            if let Some((action, args)) = bot::decide(g, pid)? {
+                answered |= bot_act(g, pid, &action, &args).is_ok();
+            }
+            break;
+        }
+        if !answered {
+            break;
+        }
+        played = true;
+    }
+    Ok(played)
+}
+
+/// `Players::checkVictory()` would name a winner (without its side effects): one player whose
+/// expeditions met, with strictly the most moves, outside the tie-break
+fn victory_decided(g: &mut Game) -> R<bool> {
+    if crate::core::globals::get(g, "tieBreakerMode")? == json!(true) {
+        return Ok(false);
+    }
+    let (mut best, mut tie, mut victor) = (0i64, false, false);
+    for p in crate::managers::players::get_all(g) {
+        let r = crate::models::player::check_victory(g, p)?;
+        let Value::Array(a) = &r else { continue };
+        if a.first() != Some(&json!(true)) {
+            continue;
+        }
+        let moves = php::intval(a.get(1).unwrap_or(&Value::Null));
+        if moves > best {
+            (best, tie, victor) = (moves, false, true);
+        } else if moves == best {
+            tie = true;
+        }
+    }
+    Ok(victor && !tie)
 }
 
 /// The log as `V1::log` reads it: the latest 100 lines that `you` may see
