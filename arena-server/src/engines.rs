@@ -4,6 +4,7 @@
 //! re-entrant), so its calls run on worker threads with large stacks (`EnginePool`).
 
 use altered_ai::legal;
+use altered_ai::record::{self, Event, Record};
 use altered_rules::arena::NewPlayer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -43,14 +44,22 @@ pub struct RulesGame {
     pub id: String,
     pub seats: Vec<SeatInfo>,
     pub game: altered_rules::Game,
+    /// The game as created and every change made to it since (`altered_ai::record`): any
+    /// position of the game can be rebuilt
+    #[serde(default)]
+    pub record: Record,
+    /// Added to the engine's `notif_seq` in the views: an undo rebuilds an earlier position (a
+    /// lower `notif_seq`), and the seq clients poll with must still increase
+    #[serde(default)]
+    pub seq_base: u64,
 }
 
 impl RulesGame {
-    /// Once the winner is known, the Night cleanups are answered for the players: the game ends
-    fn skip_decided_cleanups(&mut self) {
-        if let Err(e) = self.game.skip_decided_cleanups() {
-            eprintln!("game {}: end of game cleanups: {}", self.id, e);
-        }
+    /// Plays `e` (as `record::apply`) and records it once it is accepted
+    fn play(&mut self, e: Event) -> Result<bool, String> {
+        let r = record::apply(&mut self.game, &e)?;
+        self.record.events.push(e);
+        Ok(r)
     }
 }
 
@@ -101,7 +110,8 @@ impl ServerGame {
                 ai: p.ai.as_ref().map(|(id, _)| id.clone()),
             })
             .collect();
-        Ok(ServerGame(Box::new(RulesGame { engine: "rules".into(), id, seats, game })))
+        let record = Record::start(&game);
+        Ok(ServerGame(Box::new(RulesGame { engine: "rules".into(), id, seats, game, record, seq_base: 0 })))
     }
 
     pub fn load(bytes: &[u8]) -> Option<ServerGame> {
@@ -133,7 +143,53 @@ impl ServerGame {
 
     /// Increases with every change of the game
     pub fn seq(&self) -> u64 {
-        self.0.game.notif_seq
+        self.0.game.notif_seq + self.0.seq_base
+    }
+
+    /// Changes at every undo: an AI answer decided before it is not played
+    pub fn undos(&self) -> u64 {
+        self.0.seq_base
+    }
+
+    /// The player of `seat` may take back their answers: they play only against bots or AIs
+    /// and answered at least once
+    pub fn can_undo(&self, seat: usize) -> bool {
+        let g = &self.0;
+        let Some(me) = g.seats.get(seat) else { return false };
+        !me.bot
+            && g.record.initial.is_some()
+            && g.seats.iter().enumerate().all(|(i, s)| i == seat || s.bot)
+            && g.record.events.iter().any(|e| matches!(e, Event::Answer { pid, .. } if *pid == me.id))
+    }
+
+    /// Takes back the last answer of the player of `seat`: the game is rebuilt from its record as
+    /// it was just before that answer, and every event after it is dropped. The engine's
+    /// randomness is seeded from the game and the number of acts, so the same answers lead again
+    /// to the same draws.
+    pub fn undo(&mut self, seat: usize) -> Result<(), Refused> {
+        if !self.can_undo(seat) {
+            let against_bots = self.0.seats.iter().enumerate().all(|(i, s)| i == seat || s.bot);
+            let msg = if against_bots { "Nothing to undo" } else { "Undo is only possible against bots" };
+            return Err(Refused { status: if against_bots { 409 } else { 403 }, msg: msg.into(), user: true });
+        }
+        let g = &mut self.0;
+        let pid = g.seats[seat].id;
+        let k = g.record.events.iter().rposition(|e| matches!(e, Event::Answer { pid: p, .. } if *p == pid)).unwrap_or(0);
+        let game = g.record.replay(k).map_err(|e| Refused { status: 500, msg: e, user: false })?;
+        let seq = g.game.notif_seq + g.seq_base;
+        g.seq_base = (seq + 1).saturating_sub(game.notif_seq);
+        g.game = game;
+        g.record.events.truncate(k);
+        Ok(())
+    }
+
+    /// Seed of an AI's randomness for its decision at this position: the same position gives the
+    /// same answer, after an undo too
+    pub fn ai_seed(&self, pid: u32) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (&self.0.id, self.0.game.notif_seq, self.0.record.events.len(), pid).hash(&mut h);
+        h.finish()
     }
 
     pub fn ended(&self) -> bool {
@@ -141,13 +197,7 @@ impl ServerGame {
     }
 
     pub fn run_bots(&mut self) {
-        let g = &mut self.0;
-        if let Err(e) = g.game.run_bots() {
-            eprintln!("game {}: bots: {}", g.id, e);
-        }
-        g.skip_decided_cleanups();
-        // The game now waits for a player
-        g.game.compact();
+        let _ = self.0.play(Event::Bots);
     }
 
     /// A bot of the engine (the simple bot) has a decision to take
@@ -158,16 +208,7 @@ impl ServerGame {
 
     /// One decision of a bot of the engine, so that the server can pace them (false: none taken)
     pub fn bot_step(&mut self) -> bool {
-        let g = &mut self.0;
-        let played = g.game.run_bot_step().unwrap_or_else(|e| {
-            eprintln!("game {}: bots: {}", g.id, e);
-            false
-        });
-        g.skip_decided_cleanups();
-        if !played {
-            g.game.compact();
-        }
-        played
+        self.0.play(Event::BotStep).unwrap_or(false)
     }
 
     /// The AI seats: (seat index, player id, AI id)
@@ -190,14 +231,13 @@ impl ServerGame {
     /// accepts (as headless games do, `altered_ai::play::play_game`). Then the bots play.
     pub fn ai_answer(&mut self, pid: u32, d: &Value, a: &Value) -> Result<(), String> {
         let g = &mut self.0;
-        if let Err(e) = g.game.answer(pid, &legal::with_id(d, a)) {
-            eprintln!("game {}: AI answer refused ({}): {}", g.id, d["kind"], e.0);
-            if !legal::candidates(d).iter().any(|c| g.game.answer(pid, &legal::with_id(d, c)).is_ok()) {
-                return Err(format!("no answer accepted ({}): {}", d["kind"], e.0));
-            }
+        // A refused answer changes nothing (answers are validated before any change)
+        let Err(e) = g.play(Event::Ai { pid, body: legal::with_id(d, a) }) else { return Ok(()) };
+        eprintln!("game {}: AI answer refused ({}): {}", g.id, d["kind"], e);
+        if legal::candidates(d).iter().any(|c| g.play(Event::Ai { pid, body: legal::with_id(d, c) }).is_ok()) {
+            return Ok(());
         }
-        self.run_bots();
-        Ok(())
+        Err(format!("no answer accepted ({}): {}", d["kind"], e))
     }
 
     /// The GameView of a seat (None: spectator), serialized
@@ -206,6 +246,10 @@ impl ServerGame {
         let pid = seat.and_then(|s| g.seats.get(s)).map(|s| s.id);
         let id = g.id.clone();
         let mut v = g.game.view(pid, &id).map_err(|e| e.0)?;
+        v["seq"] = json!(g.game.notif_seq + g.seq_base);
+        let can_undo = seat.is_some_and(|s| self.can_undo(s));
+        let g = &mut self.0;
+        v["canUndo"] = json!(can_undo);
         // Names, bots and the game id are the server's
         if let Some(ps) = v["players"].as_array_mut() {
             for p in ps {
@@ -224,12 +268,11 @@ impl ServerGame {
         let Some(pid) = g.seats.get(seat).map(|s| s.id) else {
             return Err(Refused { status: 403, msg: "Unknown player".into(), user: false });
         };
-        g.game.answer(pid, body).map_err(|e| {
+        g.play(Event::Answer { pid, body: body.clone() }).map_err(|e| {
             // V1::answer: HttpError 409 for a stale decision, the engine's exceptions otherwise
-            let stale = e.0 == "This decision is no longer current" || e.0 == "Nothing to decide";
-            Refused { status: if stale { 409 } else { 400 }, msg: e.0, user: true }
+            let stale = e == "This decision is no longer current" || e == "Nothing to decide";
+            Refused { status: if stale { 409 } else { 400 }, msg: e, user: true }
         })?;
-        g.skip_decided_cleanups();
         Ok(())
     }
 
@@ -325,8 +368,91 @@ mod tests {
                     }
                     assert!(g.ended(), "game {} did not end", seed);
                     assert_ne!(last, "cleanup", "game {}: a cleanup was asked after the winner was known", seed);
+                    if seed <= 3 {
+                        let rebuilt = g.0.record.replay(usize::MAX).unwrap();
+                        assert_eq!(rebuilt.oracle_state(), g.game().oracle_state(), "game {}: the record does not rebuild the game", seed);
+                    }
                 }
                 assert!(cleanups > 0, "no cleanup came up: the test checks nothing");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// Undo against the simple bot: back to before each answer, down to the start of the game;
+    /// the same answers then lead to the same game (same draws), and the seq keeps increasing
+    #[test]
+    fn undo_goes_back_and_the_same_answers_replay_the_same_game() {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn(|| {
+                let seats = [
+                    NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                    NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                ];
+                let mut g = ServerGame::new("u".into(), seats, 11).unwrap();
+                g.run_bots();
+                assert!(!g.can_undo(0), "nothing to undo before the first answer");
+                // Positions before each answer of the human, and the answers
+                let mut before = vec![];
+                let mut answers = vec![];
+                while answers.len() < 40 && !g.ended() {
+                    let Some(d) = g.game().try_decision(2001).unwrap() else {
+                        g.run_bots();
+                        continue;
+                    };
+                    let state = g.game().oracle_state();
+                    let a = legal::candidates(&d).into_iter().map(|c| legal::with_id(&d, &c)).find(|a| g.clone().answer(0, a).is_ok()).expect("an answer");
+                    g.answer(0, &a).map_err(|r| r.msg).unwrap();
+                    g.run_bots();
+                    before.push(state);
+                    answers.push(a);
+                }
+                let end = g.game().oracle_state();
+                let mut seq = g.seq();
+                // Undo every answer, one at a time
+                for k in (0..answers.len()).rev() {
+                    g.undo(0).map_err(|r| r.msg).unwrap();
+                    assert_eq!(g.game().oracle_state(), before[k], "undo {} does not go back to before answer {}", answers.len() - k, k);
+                    assert!(g.seq() > seq, "the seq must increase");
+                    seq = g.seq();
+                }
+                assert!(!g.can_undo(0));
+                assert_eq!(g.undo(0).err().map(|r| r.status), Some(409));
+                // The same answers again: the same game
+                for a in &answers {
+                    g.answer(0, a).map_err(|r| r.msg).unwrap();
+                    g.run_bots();
+                }
+                assert_eq!(g.game().oracle_state(), end, "the same answers must give the same game");
+                // Saved and loaded, then undone: the same as before
+                let mut loaded = ServerGame::load(&g.to_json()).unwrap();
+                loaded.undo(0).map_err(|r| r.msg).unwrap();
+                assert_eq!(loaded.game().oracle_state(), before[answers.len() - 1]);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// No undo against another human
+    #[test]
+    fn no_undo_against_a_human() {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn(|| {
+                let seats = [
+                    NewSeat { name: "A".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                    NewSeat { name: "B".into(), bot: false, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                ];
+                let mut g = ServerGame::new("h".into(), seats, 3).unwrap();
+                g.run_bots();
+                let d = g.game().try_decision(2001).unwrap().expect("a decision");
+                let ok = legal::candidates(&d).iter().any(|c| g.answer(0, &legal::with_id(&d, c)).is_ok());
+                assert!(ok);
+                assert!(!g.can_undo(0));
+                assert_eq!(g.undo(0).err().map(|r| r.status), Some(403));
             })
             .unwrap()
             .join()
@@ -375,6 +501,10 @@ mod tests {
                 }
                 assert!(g.ended(), "the game did not end");
                 assert!(ai_answers > 10);
+                // The record rebuilds the game
+                let r = &g.0.record;
+                let rebuilt = r.replay(usize::MAX).unwrap();
+                assert_eq!(rebuilt.oracle_state(), g.game().oracle_state());
             })
             .unwrap()
             .join()

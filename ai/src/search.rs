@@ -251,12 +251,13 @@ impl Ai {
     pub fn choose(&mut self, obs: &Observation, d: &Value, rng: &mut ChaCha8Rng) -> Value {
         let (cands, haven) = HavenRule::split(obs, d, legal::candidates(d));
         let cands = crate::useful::drop_useless_plays(obs, d, cands);
+        let cands = crate::hold::drop_premature_removals(obs, d, cands);
         let a = self.choose_among(obs, d, cands, rng);
         haven.answer(obs, a)
     }
 
-    /// The best of `cands` (candidates of `d`), without the Haven rule and the useless plays filter
-    /// of `choose`
+    /// The best of `cands` (candidates of `d`), without the rules of `choose` (Haven, useless plays,
+    /// removals held for a better target)
     pub fn choose_among(&mut self, obs: &Observation, d: &Value, mut cands: Vec<Value>, rng: &mut ChaCha8Rng) -> Value {
         self.last_scores.clear();
         let all = cands.clone();

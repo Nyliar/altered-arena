@@ -99,6 +99,8 @@ See `docs/STATUS.md` for where things stand.
 | `cargo test --release -p altered-rules` | unit tests (set `ALTERED_GOLDENS`/`GOLDENS_DIR` to the golden directory) |
 | `cargo run --release -p altered-rules --example bot_bench N` | N bot-vs-bot games, time per game and a checksum of the results |
 | `tools/rules_iter.sh` | one performance iteration: build, goldens, tests, load test |
+| `cargo run --release -p altered-imitate --bin positions -- run [--ai ID]...` | position tests of the AIs (`ai/positions`): take positions from recorded games, check the AIs' answers, see `docs/ai/POSITIONS.md` |
+| `cargo run --release -p altered-imitate --example tournament -- N AI AI...` | round robin between AIs (`deck:DXX`, `imitation:STEM`), N games per pair |
 | `python3 tools/v1_smoke.py URL` | one game through protocol v1 (any server) |
 | `cd client && npm run check:decisions -- --server URL` | games played by the client's own decision logic |
 | `./target/release/loadtest --games 1000 --pid PID` | load test, see `docs/PERFORMANCE.md` |

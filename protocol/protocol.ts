@@ -13,6 +13,8 @@
  *   POST /api/v1/games       NewGame         -> GameCreated
  *   GET  /api/v1/games/{id}?player=P&token=T[&since=seq] -> GameView (with since: waits up to 20 s for a newer seq)
  *   POST /api/v1/games/{id}/answer?player=P&token=T  Answer -> GameView | ErrorResponse
+ *   POST /api/v1/games/{id}/undo?player=P&token=T    -> GameView | ErrorResponse (takes back the
+ *        player's last answer, games against bots only: the same draws follow the same answers)
  *   POST /api/v1/matchmaking  {name, deck, reunionDeck} -> MatchTicket (status 'waiting' or 'matched')
  *   GET  /api/v1/matchmaking/{ticket}         -> MatchTicket (long poll, up to 20 s)
  *   DELETE /api/v1/matchmaking/{ticket}       leave the queue
@@ -207,6 +209,8 @@ export interface GameView {
   decision: Decision | null; // what `you` must decide now
   waitingFor: PlayerId[]; // players who must decide
   log: LogEntry[]; // most recent entries (up to 40): clients merge them into their own history
+  /** `you` may take back their last answer (a game against bots, not sent by the PHP oracle) */
+  canUndo?: boolean;
   /** The latest cards revealed from the top of a deck (not sent by the PHP oracle) */
   reveals?: RevealView[];
 }

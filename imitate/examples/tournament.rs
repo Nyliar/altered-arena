@@ -1,6 +1,7 @@
 //! Round robin between AIs, each with its own deck: N games per pair (seats alternate), then the
 //! standings by wins. An AI is `deck:DXX` (deck AI, ai/params) or `imitation:STEM` (imitation AI,
-//! private/tournament-617607/imitation/players/STEM.json).
+//! private/tournament-617607/imitation/players/STEM.json); `+nohold` at the end of an AI: without
+//! the rule that holds removals for a better target.
 //!   cargo run --release -p altered-imitate --example tournament -- N AI AI [AI...]
 use altered_ai::play::{play_game, run_parallel, Agent};
 use altered_ai::search::{Ai, Params};
@@ -18,8 +19,25 @@ fn read<T: serde::de::DeserializeOwned>(path: &str) -> T {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {}", path, e))).unwrap()
 }
 
-/// The deck, the display name and a new agent of an AI
+/// An agent playing without the rule that holds removals for a better target (`altered_ai::hold`)
+struct NoHold(Box<dyn Agent>);
+
+impl Agent for NoHold {
+    fn name(&self) -> String {
+        self.0.name()
+    }
+    fn decide(&mut self, obs: &altered_ai::play::Observation, d: &Value, rng: &mut rand_chacha::ChaCha8Rng) -> Value {
+        altered_ai::hold::without(|| self.0.decide(obs, d, rng))
+    }
+}
+
+/// The deck, the display name and a new agent of an AI (`+nohold` at the end: without the rule
+/// that holds removals for a better target)
 fn ai(id: &str, shared: &Shared) -> (String, String, Box<dyn Agent>) {
+    if let Some(base) = id.strip_suffix("+nohold") {
+        let (deck, name, agent) = ai(base, shared);
+        return (deck, format!("{} (no hold)", name), Box::new(NoHold(agent)));
+    }
     let params = |d: &str| -> Params { read(&format!("ai/params/{}.json", d)) };
     if let Some(stem) = id.strip_prefix("imitation:") {
         let p: PlayerFile = read(&format!("{}/players/{}.json", OUT, stem));

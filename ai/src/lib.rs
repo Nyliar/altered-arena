@@ -2,8 +2,11 @@
 //! See `docs/plans/AI_TOURNAMENT.md` and `docs/ai/`.
 
 pub mod eval;
+pub mod hold;
 pub mod legal;
 pub mod play;
+pub mod positions;
+pub mod record;
 pub mod replays;
 pub mod search;
 pub mod sim;
