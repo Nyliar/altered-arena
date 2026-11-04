@@ -62,7 +62,7 @@ pub static DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// The turn candidates of `d` without the plays that do nothing (the others are kept in order)
 pub fn drop_useless_plays(obs: &Observation, d: &Value, cands: Vec<Value>) -> Vec<Value> {
-    if d["kind"] != "turn" || !cands.iter().any(|a| a["type"] == "play") || DISABLED.load(Ordering::Relaxed) {
+    if d["kind"] != "turn" || !cands.iter().any(|a| is_spell_play(obs, a)) || DISABLED.load(Ordering::Relaxed) {
         return cands;
     }
     let (base, before) = redeal(obs, d);
@@ -72,7 +72,7 @@ pub fn drop_useless_plays(obs: &Observation, d: &Value, cands: Vec<Value>) -> Ve
 /// Whether the answer `a` to the turn decision `d` plays a card that does nothing (whether or not
 /// the filter is on)
 pub fn is_useless_play(obs: &Observation, d: &Value, a: &Value) -> bool {
-    if d["kind"] != "turn" || a["type"] != "play" {
+    if d["kind"] != "turn" || !is_spell_play(obs, a) {
         return false;
     }
     let (base, before) = redeal(obs, d);
@@ -88,8 +88,13 @@ fn redeal(obs: &Observation, d: &Value) -> (Game, Snapshot) {
     (base, before)
 }
 
+/// A play of a Spell: a Character or a Permanent lands on the board, which is always something
+fn is_spell_play(obs: &Observation, a: &Value) -> bool {
+    a["type"] == "play" && a["cardId"].as_i64().and_then(|id| obs.card_prop(id, "type")).is_some_and(|t| t == "spell")
+}
+
 fn useful(obs: &Observation, d: &Value, base: &Game, before: &Snapshot, a: &Value) -> bool {
-    if a["type"] != "play" {
+    if !is_spell_play(obs, a) {
         return true;
     }
     let mut s = base.clone();
