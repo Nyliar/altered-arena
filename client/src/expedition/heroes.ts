@@ -1,15 +1,4 @@
 import type { CardCatalog, CardDef, Faction } from '@protocol';
-import { artUrl } from '../api/catalog';
-
-/** Hero arts of the home page (served by the game server, like every card art) */
-export const SHOWCASE = {
-  ordis: artUrl({ asset: 'ALT_CORE_B_OR_01_C', faction: 'OD' }),
-  muna: artUrl({ asset: 'ALT_CORE_B_MU_01_C', faction: 'MU' }),
-  axiom: artUrl({ asset: 'ALT_DUSTER_B_AX_85_C', faction: 'AX' }),
-  lyra: artUrl({ asset: 'ALT_CORE_B_LY_03_C', faction: 'LY' }),
-  yzmir: artUrl({ asset: 'ALT_EOLE_B_YZ_105_C', faction: 'YZ' }),
-  bravos: artUrl({ asset: 'ALT_EOLE_B_BR_105_C', faction: 'BR' }),
-};
 
 export const FACTIONS_FR: Record<Faction, string> = {
   AX: 'Axiom',

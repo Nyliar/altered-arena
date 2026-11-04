@@ -13,9 +13,6 @@
   letter-spacing: 0.04em;
 }
 .lobby-head h1 span { color: var(--accent); }
-.lobby-tabs { display: flex; gap: 6px; margin: 16px 0; overflow-x: auto; }
-.pref { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); cursor: pointer; }
-.pref input { width: 18px; height: 18px; accent-color: var(--accent); }
 .tab {
   padding: 10px 16px;
   min-height: 44px;
@@ -27,14 +24,10 @@
   white-space: nowrap;
 }
 .tab.on { background: var(--panel-strong); color: var(--text); border-color: var(--accent); }
-.lobby-section { display: flex; flex-direction: column; gap: 14px; }
-.lobby-section.narrow { max-width: 640px; }
-.lobby-section h2 { margin: 6px 0 0; font-size: 18px; }
 .field { display: flex; flex-direction: column; gap: 4px; max-width: 360px; }
 .field span { font-size: 13px; color: var(--muted); }
 .field input,
-.field select,
-.hotseat-row input {
+.field select {
   min-height: 44px;
   padding: 8px 12px;
   border-radius: 10px;
@@ -42,26 +35,7 @@
   background: var(--panel-strong);
   color: var(--text);
 }
-.lobby-cta {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, transparent, rgb(8 9 20 / 0.95) 30%);
-  z-index: 20;
-}
-.lobby-cta .muted { margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.btn.big { min-height: 52px; padding: 8px 32px; font-size: 18px; }
 .lobby-error { color: #ff8787; }
-.hotseat-links { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
-.hotseat-links h3 { margin: 0; }
-.hotseat-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.hotseat-row input { flex: 1; min-width: 180px; font-size: 12px; }
 .center-screen {
   height: 100dvh;
   display: flex;
@@ -75,7 +49,6 @@
 .spinner.big { width: 36px; height: 36px; border-width: 3px; }
 .switch-player.attn { border-color: var(--accent); animation: pulse 1.2s infinite; }
 .spectator-tag { font-size: 12px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--accent-2); color: var(--accent-2); }
-.queue-status { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
 
 /* Replays list */
 .replay-list {

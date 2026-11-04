@@ -1,23 +1,20 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { PlayerId } from '@protocol';
-import { Lobby } from './screens/Lobby';
 import { GameScreen } from './screens/GameScreen';
-import { Home } from './expedition/Home';
 import { Play, type PlayMode } from './expedition/Play';
 import { Salon } from './expedition/Salon';
 import { Replays } from './expedition/Replays';
 import { Toasts } from './components/Toasts';
 import { saveToken, tokenOf } from './screens/storage';
+import './screens/screens.css';
 
 // Replays of BGA games (and, for development, recorded GameViews)
 const ReplayScreen = lazy(() => import('./screens/ReplayScreen'));
 
 type Route =
-  | { name: 'home' }
   | { name: 'play'; mode: PlayMode }
   | { name: 'salon'; gameId: string }
   | { name: 'replays' }
-  | { name: 'lobby' }
   | { name: 'game'; gameId: string; player: PlayerId | null; token: string | null }
   | { name: 'replay' };
 
@@ -46,14 +43,11 @@ function parse(): Route {
   }
   if (game) return { name: 'game', gameId: game, player: null, token: null }; // spectator
   if (q.has('replay')) return q.get('replay') ? { name: 'replay' } : { name: 'replays' };
-  if (q.has('play')) {
-    const m = q.get('play');
-    return { name: 'play', mode: m === 'friend' || m === 'ai' ? m : 'match' };
-  }
   const salon = q.get('salon');
   if (salon) return { name: 'salon', gameId: salon };
-  if (q.has('lobby')) return { name: 'lobby' };
-  return { name: 'home' };
+  // The play hub is the entry point (?play, ?play=friend, ?play=ai, and any other address)
+  const m = q.get('play');
+  return { name: 'play', mode: m === 'friend' || m === 'ai' ? m : 'match' };
 }
 
 export function App() {
@@ -106,12 +100,9 @@ export function App() {
         <ReplayScreen />
       </Suspense>
     );
-  else if (route.name === 'play')
-    screen = <Play key={route.mode} initialMode={route.mode} onJoin={join} onRoom={(g) => go(`?salon=${encodeURIComponent(g)}`)} />;
   else if (route.name === 'salon') screen = <Salon key={route.gameId} gameId={route.gameId} onJoin={join} />;
   else if (route.name === 'replays') screen = <Replays />;
-  else if (route.name === 'lobby') screen = <Lobby onJoin={join} />;
-  else screen = <Home />;
+  else screen = <Play key={route.mode} initialMode={route.mode} onJoin={join} onRoom={(g) => go(`?salon=${encodeURIComponent(g)}`)} />;
 
   return (
     <>

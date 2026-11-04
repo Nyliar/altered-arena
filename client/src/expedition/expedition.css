@@ -82,7 +82,6 @@
   text-decoration: none;
   border-bottom: 1px solid rgb(200 170 110 / 0.35);
 }
-.xp a.xp-rail-logo { color: var(--xp-gold-light); }
 .xp-rail-item {
   display: flex;
   flex-direction: column;
@@ -102,7 +101,6 @@
   background: linear-gradient(90deg, rgb(200 170 110 / 0), rgb(200 170 110 / 0.16));
   box-shadow: inset -3px 0 0 var(--xp-gold);
 }
-.xp-rail-bottom { margin-top: auto; border-top: 1px solid rgb(200 170 110 / 0.2); }
 .xp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 32px; }
 .xp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .xp-head h1 { font-size: 38px; }
@@ -146,6 +144,5 @@
   .xp-rail-logo { padding: 10px 16px; border: 0; font-size: 24px; }
   .xp-rail-item { flex: 1; padding: 8px 4px; border: 0; font-size: 12px; gap: 4px; }
   .xp-rail-item svg { width: 22px; height: 22px; }
-  .xp-rail-bottom { margin: 0; border: 0; flex: 0 0 64px; }
   .xp-main { padding: 16px; }
 }

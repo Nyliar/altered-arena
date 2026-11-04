@@ -9,7 +9,7 @@ import { ShownTargets } from '../arena/Cast';
 import { Inspector } from '../components/Inspector';
 import { toast } from '../game/toasts';
 import type { AnswerBody } from '../game/useGame';
-import './Lobby.css';
+import './screens.css';
 
 type ReplayInfo = { table: number; players: { name: string; faction: string; hero: string }[]; steps: number };
 type ReplayStep = { move: number; player: number; answer: Record<string, unknown> };
@@ -57,7 +57,7 @@ function ReplayList() {
           <h1>
             Altered <span>Replays</span>
           </h1>
-          <a className="btn ghost" href="?">
+          <a className="btn ghost" href="?replay">
             Back
           </a>
         </header>

@@ -70,4 +70,3 @@ export function tokenOf(gameId: string, player: PlayerId): string | null {
 const KEY_CONFIRM_TURN = 'arena.confirmTurn';
 /** Wait a moment (with Undo) before the end of a turn is confirmed; off: confirmed at once */
 export const confirmTurnPref = () => read<boolean>(KEY_CONFIRM_TURN) ?? false;
-export const saveConfirmTurnPref = (on: boolean) => write(KEY_CONFIRM_TURN, on);

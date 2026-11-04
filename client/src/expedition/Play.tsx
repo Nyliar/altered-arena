@@ -251,48 +251,42 @@ export function Play({
           </div>
 
           <section className="play-panel" aria-live="polite">
-            <div className="play-stage">
-              <figure>
-                <StageCard def={myHero} />
-                <figcaption>
-                  <strong>{name || 'Joueur'}</strong>
-                  <span>{myHero ? myHero.name : 'Choisissez un deck'}</span>
-                </figcaption>
-              </figure>
-              <span className="stage-vs">contre</span>
-              <figure>
-                {mode === 'match' && (
-                  <>
-                    <StageCard back>{ticket && <span className="stage-spin" />}</StageCard>
-                    <figcaption>
-                      <strong>{ticket ? 'Recherche…' : 'Adversaire'}</strong>
-                      <span>{ticket ? 'un joueur en ligne' : 'inconnu'}</span>
-                    </figcaption>
-                  </>
-                )}
-                {mode === 'friend' && (
-                  <>
-                    <StageCard>
-                      <LinkIcon size={40} />
-                      <span className="stage-free">Place libre</span>
-                    </StageCard>
-                    <figcaption>
-                      <strong>Votre ami</strong>
-                      <span>rejoint par le lien</span>
-                    </figcaption>
-                  </>
-                )}
-                {mode === 'ai' && (
-                  <>
-                    <StageCard def={aiHero} back={!aiHero} />
-                    <figcaption>
-                      <strong>{AI_KINDS.find((k) => k[0] === aiKind)?.[1]}</strong>
-                      <span>{ai?.hero ?? ai?.label ?? '…'}</span>
-                    </figcaption>
-                  </>
-                )}
-              </figure>
-            </div>
+            {/* Against an AI, the room goes to the list of AIs: no stage */}
+            {mode !== 'ai' && (
+              <div className="play-stage">
+                <figure>
+                  <StageCard def={myHero} />
+                  <figcaption>
+                    <strong>{name || 'Joueur'}</strong>
+                    <span>{myHero ? myHero.name : 'Choisissez un deck'}</span>
+                  </figcaption>
+                </figure>
+                <span className="stage-vs">contre</span>
+                <figure>
+                  {mode === 'match' && (
+                    <>
+                      <StageCard back>{ticket && <span className="stage-spin" />}</StageCard>
+                      <figcaption>
+                        <strong>{ticket ? 'Recherche…' : 'Adversaire'}</strong>
+                        <span>{ticket ? 'un joueur en ligne' : 'inconnu'}</span>
+                      </figcaption>
+                    </>
+                  )}
+                  {mode === 'friend' && (
+                    <>
+                      <StageCard>
+                        <LinkIcon size={40} />
+                        <span className="stage-free">Place libre</span>
+                      </StageCard>
+                      <figcaption>
+                        <strong>Votre ami</strong>
+                        <span>rejoint par le lien</span>
+                      </figcaption>
+                    </>
+                  )}
+                </figure>
+              </div>
+            )}
 
             <div className="play-controls">
               <div className="play-deck-row">

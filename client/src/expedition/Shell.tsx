@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import './expedition.css';
 
-export type Section = 'home' | 'play' | 'replays' | 'options';
+export type Section = 'play' | 'replays';
 
 const ICONS: Record<Section, ReactNode> = {
-  home: <path d="M3 11 12 4l9 7v9H3z" />,
   play: (
     <>
       <path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4" />
@@ -15,12 +14,6 @@ const ICONS: Record<Section, ReactNode> = {
     <>
       <path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM19 17H6" />
       <path d="m10 8 4 2.5-4 2.5z" />
-    </>
-  ),
-  options: (
-    <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
     </>
   ),
 };
@@ -48,15 +41,11 @@ export function Shell({ current, children }: { current: Section; children: React
     <div className="xp">
       <div className="xp-app">
         <nav className="xp-rail" aria-label="Navigation">
-          <a className="xp-rail-logo" href="?" aria-label="Altered Arena, accueil">
+          <span className="xp-rail-logo" aria-label="Altered Arena">
             A
-          </a>
-          <RailItem section="home" href="?" label="Accueil" current={current} />
+          </span>
           <RailItem section="play" href="?play" label="Jouer" current={current} />
           <RailItem section="replays" href="?replay" label="Replays" current={current} />
-          <div className="xp-rail-bottom">
-            <RailItem section="options" href="?lobby" label="Avancé" current={current} />
-          </div>
         </nav>
         <main className="xp-main">{children}</main>
       </div>
