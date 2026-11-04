@@ -18,8 +18,10 @@ dir=${2:?directory of the reference results}
 mkdir -p "$dir"
 out=$(mktemp -d)
 
-cargo build --release -q -p goldens -p altered-rules --example bot_bench
+cargo build --release -q -p goldens
+cargo build --release -q -p altered-rules --example bot_bench
 cargo build --release -q -p altered-imitate --example simbench
+[ -x ./target/release/goldens ] || { echo "no goldens runner built"; exit 1; }
 
 echo "goldens..."
 ./target/release/goldens server/goldens -v > "$out/goldens.raw" 2>&1 || true
@@ -51,7 +53,7 @@ fail=0
 for f in goldens.txt goldens.summary tests.txt bot_bench.txt simbench.txt; do
   if ! diff -q "$dir/$f" "$out/$f" > /dev/null; then
     echo "DIFFERS: $f"
-    diff "$dir/$f" "$out/$f" | head -20
+    diff "$dir/$f" "$out/$f" | head -20 || true
     fail=1
   fi
 done
