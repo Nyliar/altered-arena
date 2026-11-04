@@ -44,7 +44,11 @@ Patterns name cards, not ids: `TYPE[:CARD][@DESTINATION]` (`play:Kelon Elemental
 | Name | What | Expectation |
 | --- | --- | --- |
 | `sticky-note-seals-no-target-7`, `-8` | No Character or Permanent with Hand Cost 4 or more: Sticky Note Seals would do nothing (D04 vs D06, recorded with the filter off) | avoid `play:Sticky Note Seals` |
+| `armored-jammer-keep-for-unique` | Day 5, Dodouce's imitation AI against a human: Armored Jammer would sabotage a minor card in Reserve; kept, it can sabotage the opponent's strong Unique (Novice Studieux, in an expedition) once it reaches the Reserve. Reported by a human player (game `wmz4a74`, event 85) | avoid `play:Armored Jammer` |
 
 On 2026-11-04 (20 tries each): deck AI D04 and Caballo's imitation AI pass both; without the filter
 (`--off`) D04 plays the card 2 times of 20 in the first. The simple bot plays it every time in the
 second.
+
+Armored Jammer (20 tries each, 2026-11-04): the three Treyst imitation AIs play it 20/20; deck AI
+D06 never (20/20 pass), D05 once (19/20).
