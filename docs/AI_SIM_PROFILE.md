@@ -120,11 +120,14 @@ loading the machine; a few points are noise.
 | Commit | Change | Deck AI | Imitation AI | Simple bot |
 | --- | --- | --- | --- | --- |
 | `bbdd9b6` | Fx hasher for card properties, class data, globals | -3 % | -2 % | |
-| `37a6c51` | Card effect flow memoized per node in an evaluation scope | -10 % | -8 % | -20 % |
+| `dfc2263` | Card effect flow memoized per node in an evaluation scope | -10 % | -8 % | -20 % |
 | `ef9a8a0` | Targetable cards memoized per node in an evaluation scope | -11 % | -4 % | |
 | `a760eb3` | `build_tree` without copying subtrees; `globals::set` without a copy | -1 % | -10 % | -9 % |
 | `e6bc2a4` | Useless-play filter simulates Spells only | -3 % | -7 % | 0 |
 | `c75fb57` | AIs' views without the decision | 0 | -3 % | 0 |
+
+Overall, against `a77f168` (A/B, CPU time, median of 3): deck AI 0.66x, imitation AI 0.70x,
+simple bot 0.74x.
 
 Behaviour-changing, judged by a match against the current AI (`imitate/examples/ab_imitation`):
 
