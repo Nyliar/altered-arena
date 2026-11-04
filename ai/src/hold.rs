@@ -6,7 +6,8 @@
 //! a tempo play for this day's Dusk, which holding would give up; and a Character played is worth
 //! its place on the board, so Characters are never held.
 //!
-//! For each turn play of a card that is not a Character and destroys an opponent's card:
+//! For each turn play of a card that is not a Character and whose effects can discard (a cheap
+//! test on its effect trees, so that the other plays cost nothing):
 //! 1. the best hit now: the play is resolved on a redealt copy, every answer the player may give
 //!    during the resolution is tried, and the hit is the value of the opponent's cards it sent to
 //!    the discard pile (`card_value`);
@@ -88,7 +89,7 @@ pub fn drop_premature_removals(obs: &Observation, d: &Value, cands: Vec<Value>) 
     let mut held: Vec<i64> = vec![];
     for a in &cands {
         let Some(card) = a["cardId"].as_i64() else { continue };
-        if a["type"] != "play" || held.contains(&card) || obs.card_prop(card, "type") == Some(Value::from("character")) {
+        if a["type"] != "play" || held.contains(&card) || obs.card_prop(card, "type") == Some(Value::from("character")) || !may_discard(&base, card) {
             continue;
         }
         let now = hit_after(&base, me, d, a);
@@ -121,6 +122,27 @@ pub fn drop_premature_removals(obs: &Observation, d: &Value, cands: Vec<Value>) 
         }
     }
     cands.into_iter().filter(|a| !(a["type"] == "play" && a["cardId"].as_i64().is_some_and(|c| held.contains(&c)))).collect()
+}
+
+/// Effect fields of a card (its texts' effect trees)
+const EFFECTS: &[&str] = &["effectPlayed", "effectHand", "effectReserve", "effectPassive", "effectExhaust", "effectActivated"];
+
+/// Whether the card's own effects can send a card to the discard pile (a `Discard` action to the
+/// discard pile in one of its effect trees): the other cards are not simulated. A discard caused by another card's
+/// trigger is not seen.
+fn may_discard(g: &Game, card: i64) -> bool {
+    fn walk(v: &Value) -> bool {
+        match v {
+            // A Discard elsewhere than the discard pile (Avalanche: to Reserve) does not count
+            Value::Object(m) => {
+                let to_pile = m.get("args").and_then(|a| a.get("destination")).and_then(|d| d.as_str()).is_none_or(|d| d == "discard");
+                (m.get("action").and_then(|a| a.as_str()).is_some_and(|a| a.starts_with("Discard")) && to_pile) || m.values().any(walk)
+            }
+            Value::Array(a) => a.iter().any(walk),
+            _ => false,
+        }
+    }
+    g.cards.get(&card).is_some_and(|c| EFFECTS.iter().any(|k| c.props.get(k).is_some_and(walk)))
 }
 
 /// The best hit of playing `card` at the turn decision of `g` (0 when it cannot be played)
