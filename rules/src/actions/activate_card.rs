@@ -71,7 +71,14 @@ fn get_flow(g: &mut Game, ctx: Ctx, player: Option<PId>) -> R<Value> {
 /// `getFlowTree($player)`: the flow built as a (detached) tree
 // PHP: Actions/ActivateCard.php:96
 fn get_flow_tree(g: &mut Game, ctx: Ctx, player: Option<PId>) -> R<Option<NodeId>> {
-    let flow = get_flow(g, ctx, player)?;
+    // Inside an evaluation scope (`Game::eval_run`: the state does not change while it lasts) the
+    // flow is computed once per node and player; the tree is still built anew at each call
+    let flow = if g.memo.is_some() {
+        let key = format!("flow|{:?}|{:?}", ctx, player);
+        g.eval_run(key, |g| get_flow(g, ctx, player))?
+    } else {
+        get_flow(g, ctx, player)?
+    };
     if flow.is_null() {
         return Ok(None);
     }
