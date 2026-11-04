@@ -14,6 +14,8 @@ export interface GameState {
   connected: boolean;
   fatal: string | null;
   send: (a: AnswerBody) => Promise<boolean>;
+  /** Takes back the player's last answer (games against bots: `view.canUndo`) */
+  undo: () => Promise<boolean>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -44,9 +46,16 @@ export function useGame(gameId: string, player: PlayerId | null, token: string |
     if (cur && v.seq < cur.seq) return;
     if (cur && v.seq === cur.seq && v.decision?.id === cur.decision?.id) return;
     const lastSeq = cur ? Math.max(-1, ...cur.log.map((e) => e.seq)) : -1;
+    const newSeq = Math.max(-1, ...v.log.map((e) => e.seq));
     viewRef.current = v;
     setView(v);
-    setLog((l) => mergeLog(l, v.log, lastSeq));
+    if (newSeq < lastSeq) {
+      // An undo rebuilt an earlier position: the log entries after it are gone
+      setLog((l) => {
+        const kept = l.filter((e) => e.seq <= newSeq);
+        return mergeLog(kept, v.log, Math.max(-1, ...kept.map((e) => e.seq)));
+      });
+    } else setLog((l) => mergeLog(l, v.log, lastSeq));
   }, []);
 
   useEffect(() => {
@@ -60,7 +69,11 @@ export function useGame(gameId: string, player: PlayerId | null, token: string |
       let failures = 0;
       while (!stopped) {
         const cur = viewRef.current;
-        if (cur?.phase === 'ended') break;
+        // An ended game changes no more, unless the player takes back a move (undo)
+        if (cur?.phase === 'ended') {
+          await sleep(500);
+          continue;
+        }
         try {
           const v = await api.view(gameId, player, token, cur ? cur.seq : undefined, ctrl.signal);
           if (stopped) break;
@@ -107,5 +120,19 @@ export function useGame(gameId: string, player: PlayerId | null, token: string |
     [gameId, player, token, accept],
   );
 
-  return { view, log, sending, connected, fatal, send };
+  const undo = useCallback(async () => {
+    setSending(true);
+    try {
+      accept(await api.undo(gameId, player, token));
+      return true;
+    } catch (e) {
+      const err = e as ApiError;
+      toast(err.user ? err.message : `Server error: ${err.message}`);
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }, [gameId, player, token, accept]);
+
+  return { view, log, sending, connected, fatal, send, undo };
 }

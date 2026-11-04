@@ -80,6 +80,9 @@ export const api = {
       { method: 'POST', body: JSON.stringify(answer) },
       token,
     ),
+  /** Takes back the player's last answer (a game against bots only) */
+  undo: (gameId: string, player: PlayerId | null, token: string | null | undefined) =>
+    request<GameView>(`/games/${encodeURIComponent(gameId)}/undo?${seat(player)}`, { method: 'POST' }, token),
   /** Joins the matchmaking queue with a starter deck or an Altered Reunion deck */
   matchmake: (name: string, deck: { deck: string } | { reunionDeck: string }) =>
     request<MatchTicket>('/matchmaking', { method: 'POST', body: JSON.stringify({ name, ...deck }) }),

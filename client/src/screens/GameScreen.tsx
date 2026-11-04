@@ -65,12 +65,19 @@ export function GameScreen({
     </button>
   ) : null;
   const spectator = view.you === null ? <span className="spectator-tag">Spectator</span> : null;
+  // Against bots: back to before the player's last answer (again and again, down to the start)
+  const undo = view.canUndo ? (
+    <button type="button" className="btn ghost undo-move" disabled={game.sending} onClick={() => void game.undo()} title="Take back your last move">
+      ↶ Undo
+    </button>
+  ) : null;
+  const extra = spectator || switcher || undo ? <>{spectator}{switcher}{undo}</> : undefined;
 
   return (
     <InspectProvider catalog={catalog} preferredRefs={refs}>
       <GameProvider view={view} catalog={catalog} log={game.log} sending={game.sending} send={game.send}>
         <DragProvider>
-          <Arena onLeave={onLeave} connected={game.connected} extraTop={spectator || switcher ? <>{spectator}{switcher}</> : undefined} />
+          <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} />
         </DragProvider>
       </GameProvider>
       <Inspector />

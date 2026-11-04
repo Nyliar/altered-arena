@@ -74,7 +74,6 @@ struct AiPlayers {
     agents: HashMap<u32, Box<dyn Agent>>,
     /// Each seat's decklist (an AI's own; a human's is not read)
     decks: [Value; 2],
-    rng: Option<ChaCha8Rng>,
 }
 
 #[derive(Clone)]
@@ -179,6 +178,7 @@ async fn main() {
         .route("/api/v1/games", post(create_game))
         .route("/api/v1/games/{id}", get(view_game))
         .route("/api/v1/games/{id}/answer", post(answer))
+        .route("/api/v1/games/{id}/undo", post(undo))
         .route("/api/v1/matchmaking", post(join_queue))
         .route("/api/v1/matchmaking/{ticket}", get(poll_queue).delete(leave_queue))
         .route("/api/v1/replays", get(list_replays))
@@ -527,6 +527,39 @@ async fn answer(
     }
 }
 
+/// Takes back the player's last answer (a game against bots only): the game as it was just before
+/// it, the same decision asked again
+async fn undo(State(s): State<Shared>, Path(id): Path<String>, Query(q): Query<ViewQuery>, headers: axum::http::HeaderMap) -> Response {
+    let Some(e) = entry(&s, &id).await else { return error(StatusCode::NOT_FOUND, "Unknown game", false) };
+    let seat = match seat_of(&*e.game.lock().await, &q, &headers) {
+        Ok(Some(seat)) => seat,
+        Ok(None) => return error(StatusCode::UNAUTHORIZED, "A player token is required", false),
+        Err(r) => return r,
+    };
+    let ai = e.ai.clone();
+    let res = with_game(&s, &e, true, move |g| {
+        g.undo(seat)?;
+        // The AIs start again from this position, as after a reload (they remember their last decisions)
+        ai.lock().unwrap_or_else(|p| p.into_inner()).agents.clear();
+        Ok::<_, engines::Refused>(g.view_json(Some(seat)))
+    })
+    .await;
+    match res {
+        Ok(Ok(Ok(view))) => {
+            e.changed.notify_waiters();
+            kick_ais(&s, &id, &e);
+            s.dirty.lock().await.insert(id);
+            json_bytes(view)
+        }
+        Ok(Ok(Err(err))) | Err(err) => {
+            e.changed.notify_waiters();
+            s.dirty.lock().await.insert(id);
+            error(StatusCode::INTERNAL_SERVER_ERROR, err, false)
+        }
+        Ok(Err(refused)) => error(StatusCode::from_u16(refused.status).unwrap_or(StatusCode::BAD_REQUEST), refused.msg, refused.user),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Bot and AI seats: the server plays their decisions in the background, one at a time
 // ---------------------------------------------------------------------------
@@ -579,8 +612,8 @@ async fn bot_step(s: &Shared, e: &Arc<GameEntry>) -> Result<bool, String> {
 /// its lock (an imitation AI takes up to a second): views and the other player go on meanwhile.
 /// Its answer is played if the decision is still current, else the next step decides again.
 async fn ai_step(s: &Shared, e: &Arc<GameEntry>) -> Result<bool, String> {
-    let pending = with_game(s, e, false, |g| g.ai_decision().map(|(pid, d)| (pid, d, g.game().clone(), g.ai_seats()))).await?;
-    let Some((pid, d, game, seats)) = pending else { return Ok(false) };
+    let pending = with_game(s, e, false, |g| g.ai_decision().map(|(pid, d)| (pid, d, g.game().clone(), g.ai_seats(), g.ai_seed(pid), g.undos()))).await?;
+    let Some((pid, d, game, seats, ai_seed, undos)) = pending else { return Ok(false) };
     let paced = tokio::time::Instant::now() + BOT_PACE;
     let (players, s2, d2) = (e.ai.clone(), s.clone(), d.clone());
     let decided = s
@@ -598,7 +631,8 @@ async fn ai_step(s: &Shared, e: &Arc<GameEntry>) -> Result<bool, String> {
                     p.agents.insert(*seat_pid, agent);
                 }
             }
-            let rng = p.rng.get_or_insert_with(|| ChaCha8Rng::seed_from_u64(seed()));
+            // Seeded from the position: the same answers of the player give the same answers of the AI
+            let rng = &mut ChaCha8Rng::seed_from_u64(ai_seed);
             let obs = Observation::new(&game, pid as i64, &p.decks);
             match p.agents.get_mut(&pid) {
                 Some(agent) => {
@@ -623,7 +657,8 @@ async fn ai_step(s: &Shared, e: &Arc<GameEntry>) -> Result<bool, String> {
     };
     tokio::time::sleep_until(paced).await;
     with_game(s, e, true, move |g| match g.ai_decision() {
-        Some((p, current)) if p == pid && current["id"] == d["id"] => g.ai_answer(pid, &d, &a),
+        // Not after an undo: the decision ids of the position rebuilt may be the same
+        Some((p, current)) if p == pid && current["id"] == d["id"] && g.undos() == undos => g.ai_answer(pid, &d, &a),
         _ => Ok(()),
     })
     .await??;
