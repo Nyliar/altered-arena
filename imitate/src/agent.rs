@@ -5,7 +5,7 @@
 use crate::features::{self, Config};
 use altered_ai::legal;
 use altered_ai::play::{Agent, Observation};
-use altered_ai::search::{Ai, Params};
+use altered_ai::search::{Ai, HavenRule, Params};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
@@ -111,9 +111,15 @@ impl Imitator {
         total
     }
 
-    /// The answer, the hidden cards redealt from `base` (see `scores`)
+    /// The answer, the hidden cards redealt from `base` (see `scores`). The tap of Haven, Bravos
+    /// Bastion follows the deck AI's rule (`search::HavenRule`)
     pub fn decide_seeded(&mut self, obs: &Observation, d: &Value, base: u64, rng: &mut ChaCha8Rng) -> Value {
-        let mut cands = legal::candidates(d);
+        let (cands, haven) = HavenRule::split(obs, d, legal::candidates(d));
+        let a = self.pick(obs, d, cands, base, rng);
+        haven.answer(obs, a)
+    }
+
+    fn pick(&mut self, obs: &Observation, d: &Value, mut cands: Vec<Value>, base: u64, rng: &mut ChaCha8Rng) -> Value {
         if cands.is_empty() {
             return json!({"type": "pass"});
         }

@@ -154,6 +154,54 @@ pub fn rollout_day(g: &mut Game, max: usize) -> usize {
 /// The class of Haven, Bravos Bastion (AX), whose {T} boosts the next Character played from Reserve
 const HAVEN: &str = "AX_Rare_HavenBravosBastion";
 
+/// Haven, Bravos Bastion: {T} boosts the next Character played from Reserve, until the end of the
+/// turn (any card played ends it). Its tap is not chosen on its own: `split` removes it from the
+/// turn candidates, and once a boost is pending keeps only the Reserve Characters; `answer` plays
+/// the tap just before the chosen Reserve Character. Used by every agent that picks among the
+/// candidates (the deck AI, the imitation AI).
+pub struct HavenRule {
+    tap: Option<Value>,
+}
+
+impl HavenRule {
+    pub fn split(obs: &Observation, d: &Value, mut cands: Vec<Value>) -> (Vec<Value>, HavenRule) {
+        if d["kind"] != "turn" {
+            return (cands, HavenRule { tap: None });
+        }
+        let view = obs.view();
+        let tap = cands.iter().find(|a| Self::is_tap(&view, a)).cloned();
+        cands.retain(|a| !Self::is_tap(&view, a));
+        if obs.global_int("nextReserveCharacterBoost") > 0 && cands.iter().any(|a| Self::from_reserve(obs, &view, a)) {
+            cands.retain(|a| Self::from_reserve(obs, &view, a));
+        }
+        (cands, HavenRule { tap })
+    }
+
+    /// The answer to play for `a`, chosen among the candidates `split` returned
+    pub fn answer(self, obs: &Observation, a: Value) -> Value {
+        match self.tap {
+            Some(t) if Self::from_reserve(obs, &obs.view(), &a) => t,
+            _ => a,
+        }
+    }
+
+    fn card(view: &Value, id: &Value) -> Value {
+        view["cards"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == *id)).cloned().unwrap_or(Value::Null)
+    }
+
+    fn is_tap(view: &Value, a: &Value) -> bool {
+        a["type"] == "tap" && Self::card(view, &a["cardId"])["ref"] == HAVEN
+    }
+
+    fn from_reserve(obs: &Observation, view: &Value, a: &Value) -> bool {
+        let c = Self::card(view, &a["cardId"]);
+        a["type"] == "play"
+            && c["zone"] == "reserve"
+            && c["owner"].as_i64() == Some(obs.me)
+            && a["cardId"].as_i64().and_then(|id| obs.card_prop(id, "type")) == Some(json!("character"))
+    }
+}
+
 fn is_mana_choice(d: &Value) -> bool {
     d["kind"] == "select" && d["prompt"].as_str().unwrap_or("").to_lowercase().contains("mana")
 }
@@ -201,34 +249,13 @@ impl Ai {
     }
 
     pub fn choose(&mut self, obs: &Observation, d: &Value, rng: &mut ChaCha8Rng) -> Value {
-        if d["kind"] != "turn" {
-            return self.choose_from(obs, d, legal::candidates(d), rng);
-        }
-        // Haven, Bravos Bastion: {T} boosts the next Character played from Reserve, until the end
-        // of the turn (any card played ends it). Its tap is not searched on its own: it is played
-        // just before the chosen Reserve Character, and once a boost is pending only Reserve
-        // Characters are played.
-        let view = obs.view();
-        let card = |id: &Value| view["cards"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == *id)).cloned().unwrap_or(Value::Null);
-        let is_haven = |a: &Value| a["type"] == "tap" && card(&a["cardId"])["ref"] == HAVEN;
-        let from_reserve = |a: &Value| {
-            let c = card(&a["cardId"]);
-            a["type"] == "play" && c["zone"] == "reserve" && c["owner"].as_i64() == Some(obs.me) && a["cardId"].as_i64().and_then(|id| obs.card_prop(id, "type")) == Some(json!("character"))
-        };
-        let mut cands = legal::candidates(d);
-        let haven = cands.iter().find(|a| is_haven(a)).cloned();
-        cands.retain(|a| !is_haven(a));
-        if obs.global_int("nextReserveCharacterBoost") > 0 && cands.iter().any(&from_reserve) {
-            cands.retain(&from_reserve);
-        }
-        let a = self.choose_from(obs, d, cands, rng);
-        match haven {
-            Some(h) if from_reserve(&a) => h,
-            _ => a,
-        }
+        let (cands, haven) = HavenRule::split(obs, d, legal::candidates(d));
+        let a = self.choose_among(obs, d, cands, rng);
+        haven.answer(obs, a)
     }
 
-    fn choose_from(&mut self, obs: &Observation, d: &Value, mut cands: Vec<Value>, rng: &mut ChaCha8Rng) -> Value {
+    /// The best of `cands` (candidates of `d`), without the Haven rule of `choose`
+    pub fn choose_among(&mut self, obs: &Observation, d: &Value, mut cands: Vec<Value>, rng: &mut ChaCha8Rng) -> Value {
         self.last_scores.clear();
         let all = cands.clone();
         if cands.is_empty() {

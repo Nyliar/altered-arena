@@ -332,8 +332,9 @@ fn ids(v: &Value) -> Vec<Value> {
 
 /// The features of every candidate of `d` (in order). `None` for a candidate the redealt copy
 /// refuses (it then keeps only its description features).
-/// What the deck AI (`search::Ai`) thinks of the candidates: the one it picks, and for each
-/// candidate it evaluated, its 1-ply and rollout scores
+/// What the deck AI (`search::Ai`) thinks of the candidates: the one it picks among `cands` (without
+/// its Haven rule, so that the pick is one of them), and for each candidate it evaluated, its 1-ply
+/// and rollout scores
 #[derive(Clone, Debug, Default)]
 pub struct SearchView {
     pub pick: Option<usize>,
@@ -342,7 +343,7 @@ pub struct SearchView {
 }
 
 pub fn search_pick(ai: &mut search::Ai, obs: &Observation, d: &Value, cands: &[Value], rng: &mut ChaCha8Rng) -> SearchView {
-    let a = legal::canonical(&ai.choose(obs, d, rng));
+    let a = legal::canonical(&ai.choose_among(obs, d, cands.to_vec(), rng));
     let canon: Vec<Value> = cands.iter().map(legal::canonical).collect();
     let mut v = SearchView { pick: canon.iter().position(|c| *c == a), ply: vec![None; cands.len()], roll: vec![None; cands.len()] };
     for (ans, ply, roll) in &ai.last_scores {
