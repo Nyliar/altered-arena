@@ -15,7 +15,13 @@ use rayon::prelude::*;
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 
-/// Texts don't have to match (PHP_ENGINE.md §2.6: only empty vs non-empty descriptions matter)
+/// Fields the arena added to decisions after the files were recorded, for the client's display
+/// only (`toMana`: the picked cards go to the Mana zone face down; `markRegion`: the regions and
+/// markers a button choice is about). They don't exist in PHP and change no rule.
+const CLIENT_HINTS: &[&str] = &["toMana", "markRegion"];
+
+/// Texts don't have to match (PHP_ENGINE.md §2.6: only empty vs non-empty descriptions matter);
+/// client hints are left out
 fn strip_texts(v: &Value) -> Value {
     match v {
         Value::Object(m) => {
@@ -23,6 +29,7 @@ fn strip_texts(v: &Value) -> Value {
             for (k, x) in m {
                 match k.as_str() {
                     "id" | "prompt" => {}
+                    k if CLIENT_HINTS.contains(&k) => {}
                     "label" => {
                         out.insert(k.clone(), json!(x.as_str().map(|s| !s.is_empty()).unwrap_or(false)));
                     }
