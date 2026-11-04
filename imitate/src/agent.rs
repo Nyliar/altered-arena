@@ -111,10 +111,12 @@ impl Imitator {
         total
     }
 
-    /// The answer, the hidden cards redealt from `base` (see `scores`). The tap of Haven, Bravos
-    /// Bastion follows the deck AI's rule (`search::HavenRule`)
+    /// The answer, the hidden cards redealt from `base` (see `scores`). As the deck AI: the tap of
+    /// Haven, Bravos Bastion follows `search::HavenRule`, and plays that do nothing are left out
+    /// (`useful`)
     pub fn decide_seeded(&mut self, obs: &Observation, d: &Value, base: u64, rng: &mut ChaCha8Rng) -> Value {
         let (cands, haven) = HavenRule::split(obs, d, legal::candidates(d));
+        let cands = altered_ai::useful::drop_useless_plays(obs, d, cands);
         let a = self.pick(obs, d, cands, base, rng);
         haven.answer(obs, a)
     }

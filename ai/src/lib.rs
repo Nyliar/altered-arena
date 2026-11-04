@@ -8,3 +8,4 @@ pub mod replays;
 pub mod search;
 pub mod sim;
 pub mod stats;
+pub mod useful;
