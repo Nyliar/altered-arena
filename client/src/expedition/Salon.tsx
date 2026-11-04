@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
-import type { CardDef, GameView, PlayerId } from '@protocol';
+import { useEffect, useRef, useState } from 'react';
+import type { CardDef, PlayerId, RoomView, SeatUpdate } from '@protocol';
 import { artUrl, useCatalog, useDecks } from '../api/catalog';
 import { api, ApiError } from '../api/client';
+import { cachedReunionDeck, loadReunionDeck } from '../components/ReunionDeck';
+import { Inspector } from '../components/Inspector';
+import { InspectProvider } from '../game/inspect';
 import { toast } from '../game/toasts';
-import { savedDeck, savedDeckSource, savedReunionDeck, tokenOf } from '../screens/storage';
+import { tokenOf } from '../screens/storage';
 import { Shell } from './Shell';
+import { useDeckChoice } from './deckChoice';
 import { FACTIONS_FR } from './heroes';
 import { LinkIcon } from './Play';
 import './play.css';
@@ -13,32 +17,45 @@ import './salon.css';
 const HOST: PlayerId = 2001;
 const GUEST: PlayerId = 2002;
 
-/** The private room of a game against a friend: the link to send, then the friend's hero once they picked a deck */
-export function Salon({ gameId, onJoin }: { gameId: string; onJoin: (gameId: string, player: PlayerId, token?: string | null) => void }) {
-  const { catalog } = useCatalog();
-  const [view, setView] = useState<GameView | null>(null);
-  const [gone, setGone] = useState(false);
-  const { decks } = useDecks();
-  // The game shows the heroes once both decks are chosen: until then, mine is the deck I created the room with
-  const [reunionHero, setReunionHero] = useState<string | null>(null);
-  useEffect(() => {
-    const id = savedReunionDeck();
-    if (savedDeckSource() === 'reunion' && id) api.reunionDeck(id).then((d) => setReunionHero(d.heroRef), () => null);
-  }, []);
-  const token = tokenOf(gameId, HOST);
-  const guestToken = tokenOf(gameId, GUEST);
-  const link = `${location.origin}${location.pathname}?game=${encodeURIComponent(gameId)}&player=${GUEST}${guestToken ? `#token=${encodeURIComponent(guestToken)}` : ''}`;
+const fail = (e: unknown) => toast(e instanceof ApiError ? e.message : String(e));
 
-  // Long poll the host's view: the guest's faction appears once they chose a deck
+/**
+ * A private room (a game against a friend): the host sends the link, each player chooses a deck and
+ * says they are ready; the game starts once both are. The friend's deck stays hidden until the game.
+ */
+export function Salon({ roomId, player, onStart }: { roomId: string; player: PlayerId; onStart: (player: PlayerId) => void }) {
+  const { catalog } = useCatalog();
+  const { decks } = useDecks();
+  const token = tokenOf(roomId, player);
+  const [room, setRoom] = useState<RoomView | null>(null);
+  const [gone, setGone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function update(u: SeatUpdate) {
+    if (!token) return;
+    setBusy(true);
+    try {
+      setRoom(await api.updateSeat(roomId, player, token, u));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const choice = useDeckChoice(catalog, decks, (name, chosen) => void update({ name, ...chosen }));
+
+  // Long poll the room: the other player's arrival and readiness, the start of the game
   useEffect(() => {
+    if (!token) return;
     const ctrl = new AbortController();
     let since: number | undefined;
     (async () => {
       while (!ctrl.signal.aborted) {
         try {
-          const v = await api.view(gameId, HOST, token, since, ctrl.signal);
-          since = v.seq;
-          setView(v);
+          const r = await api.room(roomId, player, token, since, ctrl.signal);
+          since = r.seq;
+          setRoom(r);
+          if (r.started) return;
         } catch (e) {
           if ((e as Error).name === 'AbortError') return;
           if (e instanceof ApiError && e.user) return setGone(true);
@@ -47,19 +64,45 @@ export function Salon({ gameId, onJoin }: { gameId: string; onJoin: (gameId: str
       }
     })();
     return () => ctrl.abort();
-  }, [gameId, token]);
+  }, [roomId, player, token]);
 
-  const heroOf = (pid: PlayerId): CardDef | null => {
-    const p = view?.players.find((x) => x.id === pid);
-    const ref = p?.heroCardId != null ? view?.cards.find((c) => c.id === p.heroCardId)?.ref : null;
-    return ref && catalog ? (catalog[ref] ?? null) : null;
-  };
-  const me = view?.players.find((p) => p.id === HOST);
-  const guest = view?.players.find((p) => p.id === GUEST);
-  const myRef = savedDeckSource() === 'reunion' ? reunionHero : decks?.find((d) => d.id === savedDeck())?.heroRef;
-  const myHero = heroOf(HOST) ?? (myRef && catalog ? (catalog[myRef] ?? null) : null);
-  const guestHero = heroOf(GUEST);
-  const joined = !!guest?.faction;
+  useEffect(() => {
+    if (room?.started) onStart(player);
+  }, [room?.started, player, onStart]);
+
+  // The guest arrives without a deck: they bring their name, and the deck they last played on this device
+  const brought = useRef(false);
+  const me = room?.seats.find((s) => s.id === player);
+  useEffect(() => {
+    if (brought.current || !me || me.hasDeck || room?.started) return;
+    if (player === GUEST && !choice.chosen && decks === null) return; // the starter decks are still loading
+    brought.current = true;
+    void update(choice.chosen ? { name: choice.name, ...choice.chosen } : { name: choice.name });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, decks, choice.chosen]);
+
+  // My deck as the room has it (the server decides), its hero from the catalog
+  const roomDeck = room?.deck ?? null;
+  const reunionId = roomDeck && 'reunionDeck' in roomDeck ? roomDeck.reunionDeck : null;
+  const [reunion, setReunion] = useState(() => cachedReunionDeck(reunionId));
+  useEffect(() => {
+    if (!reunionId) return setReunion(null);
+    let live = true;
+    loadReunionDeck(reunionId).then(
+      (d) => live && setReunion(d),
+      () => null,
+    );
+    return () => {
+      live = false;
+    };
+  }, [reunionId]);
+  const starter = roomDeck && 'deck' in roomDeck ? (decks?.find((d) => d.id === roomDeck.deck) ?? null) : null;
+  const myDeck = starter ?? (reunionId ? reunion : null);
+  const myHero: CardDef | null = myDeck?.heroRef && catalog ? (catalog[myDeck.heroRef] ?? null) : null;
+
+  const other = room?.seats.find((s) => s.id !== player);
+  const guestToken = tokenOf(roomId, GUEST);
+  const link = `${location.origin}${location.pathname}?salon=${encodeURIComponent(roomId)}&player=${GUEST}${guestToken ? `#token=${encodeURIComponent(guestToken)}` : ''}`;
 
   async function copy() {
     try {
@@ -77,78 +120,112 @@ export function Salon({ gameId, onJoin }: { gameId: string; onJoin: (gameId: str
         <div className="xp-head">
           <h1>Salon introuvable</h1>
         </div>
-        <p className="xp-muted">Ce salon n'existe plus sur le serveur, ou il a été créé sur un autre appareil.</p>
+        <p className="xp-muted">
+          {token ? "Ce salon n'existe plus sur le serveur." : "Ce lien d'invitation est incomplet, ou le salon a été créé sur un autre appareil."}
+        </p>
         <a className="xp-btn" href="?play=friend">
           Créer un nouveau salon
         </a>
       </Shell>
     );
 
+  const otherStatus = !other?.joined
+    ? player === HOST
+      ? 'pas encore arrivé'
+      : 'absent'
+    : !other.hasDeck
+      ? 'choisit son deck…'
+      : other.ready
+        ? 'Prêt'
+        : 'pas encore prêt';
+
   return (
-    <Shell current="play">
-      <div className="xp-head">
-        <a className="xp-btn" href="?play=friend">
-          ← Quitter le salon
-        </a>
-        <div>
-          <span className="xp-tag">Salon privé · {gameId}</span>
-          <h1>{joined ? 'Votre ami est arrivé' : 'Invitez votre ami'}</h1>
+    <InspectProvider catalog={catalog}>
+      <Shell current="play">
+        <div className="xp-head">
+          <a className="xp-btn" href="?play=friend">
+            ← Quitter le salon
+          </a>
+          <div>
+            <span className="xp-tag">Salon privé · {roomId}</span>
+            <h1>{other?.joined ? (player === HOST ? 'Votre ami est arrivé' : 'Partie entre amis') : 'Invitez votre ami'}</h1>
+          </div>
         </div>
-      </div>
 
-      <div className="salon">
-        <figure className="salon-seat">
-          {myHero ? <img className="salon-card" src={artUrl(myHero)} alt={myHero.name} /> : <span className="salon-card empty" />}
-          <figcaption>
-            <strong>{me?.name ?? '…'}</strong>
-            <span>{myHero ? `${myHero.name} · ${FACTIONS_FR[myHero.faction]}` : '…'}</span>
-            <span className="salon-ready">Prêt</span>
-          </figcaption>
-        </figure>
+        <div className="salon">
+          <figure className="salon-seat">
+            {myHero ? <img className="salon-card" src={artUrl(myHero)} alt={myHero.name} /> : <span className="salon-card empty" />}
+            <figcaption>
+              <strong>{me?.name ?? choice.name}</strong>
+              <span>{myHero ? `${myHero.name} · ${FACTIONS_FR[myHero.faction]}` : 'Aucun deck choisi'}</span>
+              {me?.ready ? <span className="salon-ready">Prêt</span> : <span className="salon-waiting">Pas encore prêt</span>}
+            </figcaption>
+            <button type="button" className="xp-btn" onClick={choice.open} disabled={busy}>
+              {me?.hasDeck ? 'Changer de deck' : 'Choisir un deck'}
+            </button>
+          </figure>
 
-        <section className="salon-middle" aria-live="polite">
-          <span className="salon-vs">contre</span>
-          {!joined && (
-            <div className="salon-box">
-              <label htmlFor="salon-link" className="salon-label">
-                Lien d'invitation
-              </label>
-              <input id="salon-link" readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
-              <div className="salon-actions">
-                <button type="button" className="xp-btn gold" onClick={copy}>
-                  Copier le lien
-                </button>
-                {share && (
-                  <button type="button" className="xp-btn" onClick={share}>
-                    Partager…
+          <section className="salon-middle" aria-live="polite">
+            <span className="salon-vs">contre</span>
+            {player === HOST && !other?.joined && (
+              <div className="salon-box">
+                <label htmlFor="salon-link" className="salon-label">
+                  Lien d'invitation
+                </label>
+                <input id="salon-link" readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+                <div className="salon-actions">
+                  <button type="button" className="xp-btn gold" onClick={copy}>
+                    Copier le lien
                   </button>
-                )}
+                  {share && (
+                    <button type="button" className="xp-btn" onClick={share}>
+                      Partager…
+                    </button>
+                  )}
+                </div>
+                <span className="xp-muted">Votre ami ouvre le lien, choisit un deck et se déclare prêt. Pas besoin de compte.</span>
               </div>
-              <span className="xp-muted">Votre ami ouvre le lien, choisit un deck, et apparaît ici. Pas besoin de compte.</span>
-            </div>
-          )}
-          <button type="button" className="xp-btn gold big" onClick={() => onJoin(gameId, HOST, token)}>
-            {joined ? 'Lancer la partie' : 'Entrer dans la partie'}
-          </button>
-        </section>
+            )}
+            {room?.error && <p className="salon-error">{room.error}</p>}
+            {me?.ready ? (
+              <>
+                <p className="salon-note">{other?.ready ? 'Lancement de la partie…' : 'Vous êtes prêt. La partie démarre dès que votre ami l’est aussi.'}</p>
+                <button type="button" className="xp-btn big" disabled={busy || room?.started} onClick={() => void update({ ready: false })}>
+                  Je ne suis plus prêt
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="xp-btn gold big"
+                disabled={busy || !room}
+                onClick={() => (me?.hasDeck ? void update({ ready: true }) : choice.open())}
+              >
+                {me?.hasDeck ? 'Je suis prêt' : 'Choisir un deck'}
+              </button>
+            )}
+          </section>
 
-        <figure className="salon-seat">
-          {joined && guestHero ? (
-            <img className="salon-card" src={artUrl(guestHero)} alt={guestHero.name} />
-          ) : (
-            <span className="salon-card empty">
-              <LinkIcon size={40} />
-              <strong>En attente de votre ami</strong>
-              <span className="stage-spin salon-spin" />
-            </span>
-          )}
-          <figcaption>
-            <strong>{joined ? guest?.name : 'Votre ami'}</strong>
-            <span>{joined && guestHero ? `${guestHero.name} · ${FACTIONS_FR[guestHero.faction]}` : 'pas encore arrivé'}</span>
-            {joined && <span className="salon-ready">Prêt</span>}
-          </figcaption>
-        </figure>
-      </div>
-    </Shell>
+          <figure className="salon-seat">
+            {other?.joined ? (
+              // The friend's deck stays hidden until the game: a card back
+              <img className="salon-card back" src="/img/card-back.jpg" alt="" />
+            ) : (
+              <span className="salon-card empty">
+                <LinkIcon size={40} />
+                <strong>{player === HOST ? 'En attente de votre ami' : 'Votre hôte a quitté le salon'}</strong>
+                {player === HOST && <span className="stage-spin salon-spin" />}
+              </span>
+            )}
+            <figcaption>
+              <strong>{other?.joined ? other.name : 'Votre ami'}</strong>
+              {other?.ready ? <span className="salon-ready">Prêt</span> : <span>{otherStatus}</span>}
+            </figcaption>
+          </figure>
+        </div>
+      </Shell>
+      {choice.dialog}
+      <Inspector />
+    </InspectProvider>
   );
 }

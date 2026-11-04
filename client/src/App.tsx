@@ -13,7 +13,7 @@ const ReplayScreen = lazy(() => import('./screens/ReplayScreen'));
 
 type Route =
   | { name: 'play'; mode: PlayMode }
-  | { name: 'salon'; gameId: string }
+  | { name: 'salon'; roomId: string; player: PlayerId }
   | { name: 'replays' }
   | { name: 'game'; gameId: string; player: PlayerId | null; token: string | null }
   | { name: 'replay' };
@@ -43,8 +43,17 @@ function parse(): Route {
   }
   if (game) return { name: 'game', gameId: game, player: null, token: null }; // spectator
   if (q.has('replay')) return q.get('replay') ? { name: 'replay' } : { name: 'replays' };
+  // A private room: ?salon=ID (the host), ?salon=ID&player=2002#token=T (the link sent to the guest)
   const salon = q.get('salon');
-  if (salon) return { name: 'salon', gameId: salon };
+  if (salon) {
+    const seat = Number(q.get('player')) || 2001;
+    const fromLink = new URLSearchParams(location.hash.slice(1)).get('token');
+    if (fromLink) {
+      saveToken(salon, seat, fromLink);
+      history.replaceState(history.state, '', `${location.pathname}?salon=${encodeURIComponent(salon)}&player=${seat}`);
+    }
+    return { name: 'salon', roomId: salon, player: seat };
+  }
   // The play hub is the entry point (?play, ?play=friend, ?play=ai, and any other address)
   const m = q.get('play');
   return { name: 'play', mode: m === 'friend' || m === 'ai' ? m : 'match' };
@@ -100,7 +109,8 @@ export function App() {
         <ReplayScreen />
       </Suspense>
     );
-  else if (route.name === 'salon') screen = <Salon key={route.gameId} gameId={route.gameId} onJoin={join} />;
+  else if (route.name === 'salon')
+    screen = <Salon key={`${route.roomId}:${route.player}`} roomId={route.roomId} player={route.player} onStart={(p) => go(gameSearch(route.roomId, p, tokenOf(route.roomId, p)), true)} />;
   else if (route.name === 'replays') screen = <Replays />;
   else screen = <Play key={route.mode} initialMode={route.mode} onJoin={join} onRoom={(g) => go(`?salon=${encodeURIComponent(g)}`)} />;
 

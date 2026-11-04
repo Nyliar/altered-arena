@@ -1,26 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { AiSummary, CardDef, PlayerId, ReunionDeckSummary } from '@protocol';
+import type { AiSummary, CardDef, PlayerId } from '@protocol';
 import { artUrl, useCatalog, useDecks } from '../api/catalog';
 import { api, ApiError } from '../api/client';
 import { InspectProvider } from '../game/inspect';
-import { DeckGrid } from '../components/Picker';
-import { cachedReunionDeck, loadReunionDeck, ReunionDeckPicker } from '../components/ReunionDeck';
 import { Inspector } from '../components/Inspector';
-import { Modal } from '../components/Modal';
 import { toast } from '../game/toasts';
-import {
-  type DeckSource,
-  saveDeck,
-  saveDeckSource,
-  savedDeck,
-  savedDeckSource,
-  savedName,
-  savedReunionDeck,
-  saveName,
-  saveReunionDeck,
-  saveToken,
-} from '../screens/storage';
+import { saveToken } from '../screens/storage';
 import { Shell } from './Shell';
+import { useDeckChoice } from './deckChoice';
 import { FACTIONS_FR, heroIndex } from './heroes';
 import './play.css';
 
@@ -67,13 +54,7 @@ export function Play({
   const { catalog, error: catErr } = useCatalog();
   const { decks, error: deckErr } = useDecks();
   const [mode, setMode] = useState<PlayMode>(initialMode);
-  const [name, setName] = useState(savedName() || 'Joueur');
-  const [deck, setDeck] = useState<string | null>(savedDeck());
-  const [source, setSource] = useState<DeckSource>(savedDeckSource());
-  const [reunion, setReunion] = useState<ReunionDeckSummary | null>(() =>
-    savedDeckSource() === 'reunion' ? cachedReunionDeck(savedReunionDeck()) : null,
-  );
-  const [picking, setPicking] = useState(false);
+  const { name, chosen, hero: myHero, deckName, deckFaction, remember, open: pickDeck, dialog } = useDeckChoice(catalog, decks);
   const [busy, setBusy] = useState(false);
   const [ticket, setTicket] = useState<string | null>(null);
   const ticketRef = useRef<string | null>(null);
@@ -88,21 +69,6 @@ export function Play({
       () => setAis([]),
     );
   }, []);
-  // A saved Altered Reunion deck is loaded by its picker, which only lives in the deck dialog: load it here too.
-  // Not while the dialog is open (the picker sets the deck, and clears it while a new link loads), and
-  // never over a deck chosen meanwhile.
-  useEffect(() => {
-    const id = savedReunionDeck();
-    if (source !== 'reunion' || !id || reunion || picking) return;
-    let live = true;
-    loadReunionDeck(id).then(
-      (d) => live && setReunion((prev) => prev ?? d),
-      () => null,
-    );
-    return () => {
-      live = false;
-    };
-  }, [source, reunion, picking]);
   // Leave the queue when the screen closes
   useEffect(
     () => () => {
@@ -111,32 +77,17 @@ export function Play({
     [],
   );
 
-  const starter = decks?.find((d) => d.id === deck) ?? null;
-  const chosen: { deck: string } | { reunionDeck: string } | null =
-    source === 'reunion' ? (reunion?.playable ? { reunionDeck: reunion.id } : null) : starter ? { deck: starter.id } : null;
-  const heroRef = source === 'reunion' ? reunion?.heroRef : starter?.heroRef;
-  const myHero = heroRef && catalog ? (catalog[heroRef] ?? null) : null;
-  const deckName = source === 'reunion' ? reunion?.name : starter?.name;
-  const deckFaction = source === 'reunion' ? reunion?.faction : starter?.faction;
-
   const heroes = catalog ? heroIndex(catalog) : null;
   const aiList = (ais ?? []).filter((a) => a.kind === aiKind);
   const ai = aiList.find((a) => a.id === aiId) ?? aiList[0] ?? null;
   const aiHero = ai?.hero && heroes ? (heroes.byName.get(ai.hero) ?? null) : null;
 
-  function remember() {
-    saveName(name);
-    saveDeckSource(source);
-    if (source === 'reunion' && reunion) saveReunionDeck(reunion.id);
-    if (source === 'starter' && deck) saveDeck(deck);
-  }
-
   async function findOpponent() {
-    if (!chosen) return setPicking(true);
+    if (!chosen) return pickDeck();
     remember();
     setBusy(true);
     try {
-      let t = await api.matchmake(name || 'Joueur', chosen);
+      let t = await api.matchmake(name, chosen);
       ticketRef.current = t.ticket;
       setTicket(t.ticket);
       while (t.status !== 'matched' && ticketRef.current === t.ticket) {
@@ -165,15 +116,15 @@ export function Play({
     if (t) void api.leaveQueue(t);
   }
 
-  /** The friend's seat has no deck: they choose it in game, after opening the link */
+  /** A private room: the friend opens the link, chooses a deck, and the game starts once both are ready */
   async function createRoom() {
-    if (!chosen) return setPicking(true);
+    if (!chosen) return pickDeck();
     remember();
     setBusy(true);
     try {
-      const g = await api.createGame({ players: [{ name: name || 'Joueur', ...chosen }, { name: 'Ami' }] });
-      for (const p of g.players) saveToken(g.gameId, p.id, p.token);
-      onRoom(g.gameId);
+      const r = await api.createRoom({ name, ...chosen });
+      for (const p of r.players) saveToken(r.roomId, p.id, p.token);
+      onRoom(r.roomId);
     } catch (e) {
       fail(e);
     } finally {
@@ -182,12 +133,12 @@ export function Play({
   }
 
   async function playAi() {
-    if (!chosen) return setPicking(true);
+    if (!chosen) return pickDeck();
     if (!ai) return;
     remember();
     setBusy(true);
     try {
-      const g = await api.createGame({ players: [{ name: name || 'Joueur', ...chosen }, { name: 'Bot', bot: true, ai: ai.id }] });
+      const g = await api.createGame({ players: [{ name, ...chosen }, { name: 'Bot', bot: true, ai: ai.id }] });
       onJoin(g.gameId, g.players[0].id, g.players[0].token);
     } catch (e) {
       fail(e);
@@ -213,10 +164,10 @@ export function Play({
       <Shell current="play">
         <div className="xp-head">
           <h1>Jouer</h1>
-          <button type="button" className="xp-chip" onClick={() => setPicking(true)} title="Pseudo et deck">
+          <button type="button" className="xp-chip" onClick={pickDeck} title="Pseudo et deck">
             {myHero ? <img className="xp-por" src={artUrl(myHero)} alt="" width={40} height={40} /> : <span className="xp-por play-por-empty" />}
             <span>
-              <strong>{name || 'Joueur'}</strong>
+              <strong>{name}</strong>
               <small>{deckName ? `Deck : ${deckName}` : 'Aucun deck choisi'}</small>
             </span>
           </button>
@@ -265,7 +216,7 @@ export function Play({
                 <figure>
                   <StageCard def={myHero} />
                   <figcaption>
-                    <strong>{name || 'Joueur'}</strong>
+                    <strong>{name}</strong>
                     <span>{myHero ? myHero.name : 'Choisissez un deck'}</span>
                   </figcaption>
                 </figure>
@@ -298,7 +249,7 @@ export function Play({
 
             <div className="play-controls">
               <div className="play-deck-row">
-                <button type="button" className="xp-btn play-deck" onClick={() => setPicking(true)}>
+                <button type="button" className="xp-btn play-deck" onClick={pickDeck}>
                   {myHero ? <img className="xp-por" src={artUrl(myHero)} alt="" width={40} height={40} /> : null}
                   <span className="play-deck-name">
                     <strong>{deckName ?? 'Choisir un deck'}</strong>
@@ -308,7 +259,7 @@ export function Play({
                 </button>
                 {mode === 'match' && <span className="xp-muted">{ticket ? 'En attente d’un autre joueur…' : 'Un joueur en ligne, une partie complète.'}</span>}
                 {mode === 'friend' && (
-                  <span className="xp-muted">Votre ami ouvre le lien, choisit son deck, et la partie démarre. Aucun compte requis.</span>
+                  <span className="xp-muted">Votre ami ouvre le lien et choisit son deck ; la partie démarre quand vous êtes prêts tous les deux. Aucun compte requis.</span>
                 )}
               </div>
 
@@ -382,58 +333,7 @@ export function Play({
         </div>
       </Shell>
 
-      {picking && (
-        <Modal
-          wide
-          className="xp-modal"
-          title="Votre deck"
-          onClose={() => setPicking(false)}
-          footer={
-            <button
-              type="button"
-              className="xp-btn gold"
-              disabled={!chosen}
-              onClick={() => {
-                remember();
-                setPicking(false);
-              }}
-            >
-              Valider
-            </button>
-          }
-        >
-          <label className="xp-field">
-            <span>Votre pseudo</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="Joueur" />
-          </label>
-          <div className="deck-source" role="tablist" aria-label="Deck">
-            {(
-              [
-                ['starter', 'Decks de départ'],
-                ['reunion', 'Mon deck Altered Reunion'],
-              ] as [DeckSource, string][]
-            ).map(([src, label]) => (
-              <button
-                key={src}
-                type="button"
-                role="tab"
-                aria-selected={source === src}
-                className={`tab ${source === src ? 'on' : ''}`}
-                onClick={() => setSource(src)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {source === 'reunion' ? (
-            <ReunionDeckPicker catalog={catalog} initialId={reunion?.id ?? savedReunionDeck()} onChange={setReunion} />
-          ) : decks && catalog ? (
-            <DeckGrid decks={decks} catalog={catalog} selected={deck} onSelect={(d) => setDeck(d.id)} />
-          ) : (
-            <p className="xp-muted">Chargement des decks…</p>
-          )}
-        </Modal>
-      )}
+      {dialog}
       <Inspector />
     </InspectProvider>
   );

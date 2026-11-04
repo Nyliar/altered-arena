@@ -18,6 +18,11 @@
  *   POST /api/v1/matchmaking  {name, deck, reunionDeck} -> MatchTicket (status 'waiting' or 'matched')
  *   GET  /api/v1/matchmaking/{ticket}         -> MatchTicket (long poll, up to 20 s)
  *   DELETE /api/v1/matchmaking/{ticket}       leave the queue
+ *   POST /api/v1/rooms        NewRoom         -> RoomCreated (a private room: a game against a friend)
+ *   GET  /api/v1/rooms/{id}?player=P[&since=seq] -> RoomView (opening it joins the seat; with since:
+ *        waits up to 20 s for a newer seq)
+ *   POST /api/v1/rooms/{id}/seat?player=P  SeatUpdate -> RoomView (the game starts, under the room's
+ *        id and with the room's tokens, once both players are ready)
   * Authentication: each human seat gets a secret `token` when the game is created (GameCreated)
  * or matched (MatchTicket). Send it as `Authorization: Bearer <token>` (`token=` query parameter
  * accepted for tools; keep secrets out of URLs). Without a
@@ -421,6 +426,40 @@ export interface MatchTicket {
   gameId?: string;
   player?: PlayerId;
   token?: string;
+}
+
+/** The host's seat (2001) and deck; the host gets both seats' tokens (the guest's goes in the link) */
+export interface NewRoom {
+  name: string;
+  deck?: string;
+  reunionDeck?: string;
+}
+
+export interface RoomCreated {
+  roomId: string;
+  players: { id: PlayerId; token: string }[];
+}
+
+/** A private room as one seat sees it: the other player's deck is never told */
+export interface RoomView {
+  roomId: string;
+  seq: number;
+  you?: PlayerId;
+  /** The game exists (id: roomId, same tokens): open it */
+  started: boolean;
+  seats: { id: PlayerId; name: string; joined: boolean; ready: boolean; hasDeck: boolean }[];
+  /** This seat's deck */
+  deck: { deck: string } | { reunionDeck: string } | null;
+  /** Why the game could not start (both players are no longer ready) */
+  error?: string;
+}
+
+/** A change of one's seat. A new deck makes the player not ready; ready needs a deck. */
+export interface SeatUpdate {
+  name?: string;
+  deck?: string;
+  reunionDeck?: string;
+  ready?: boolean;
 }
 
 export interface ErrorResponse {

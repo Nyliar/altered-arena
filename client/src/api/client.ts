@@ -8,8 +8,12 @@ import type {
   GameView,
   MatchTicket,
   NewGame,
+  NewRoom,
   PlayerId,
   ReunionDeckSummary,
+  RoomCreated,
+  RoomView,
+  SeatUpdate,
 } from '@protocol';
 
 /** An error returned by the server ({error, user}) or a network failure. */
@@ -88,5 +92,12 @@ export const api = {
     request<MatchTicket>('/matchmaking', { method: 'POST', body: JSON.stringify({ name, ...deck }) }),
   /** Long poll (up to ~20 s) until the ticket is matched */
   ticket: (ticket: string, signal?: AbortSignal) => request<MatchTicket>(`/matchmaking/${encodeURIComponent(ticket)}`, { signal }),
+  /** A private room for a game against a friend */
+  createRoom: (room: NewRoom) => request<RoomCreated>('/rooms', { method: 'POST', body: JSON.stringify(room) }),
+  /** With `since`, the server waits (up to ~20 s) for a newer room */
+  room: (roomId: string, player: PlayerId, token: string | null, since?: number, signal?: AbortSignal) =>
+    request<RoomView>(`/rooms/${encodeURIComponent(roomId)}?${seat(player)}${since !== undefined ? `&since=${since}` : ''}`, { signal }, token),
+  updateSeat: (roomId: string, player: PlayerId, token: string | null, update: SeatUpdate) =>
+    request<RoomView>(`/rooms/${encodeURIComponent(roomId)}/seat?${seat(player)}`, { method: 'POST', body: JSON.stringify(update) }, token),
   leaveQueue: (ticket: string) => request<unknown>(`/matchmaking/${encodeURIComponent(ticket)}`, { method: 'DELETE' }).catch(() => null),
 };

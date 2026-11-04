@@ -1,7 +1,8 @@
 //! Altered Arena game server.
 //!
 //! Protocol v1 (protocol/protocol.ts) over HTTP, games in memory (saved to DATA_DIR as JSON every
-//! PERSIST_SECS, unloaded when idle and reloaded on demand), bot opponents, matchmaking queue, and
+//! PERSIST_SECS, unloaded when idle and reloaded on demand), bot opponents, matchmaking queue, private
+//! rooms (a game against a friend, `rooms`), and
 //! the web client (CLIENT_DIR) with the card art (ART_DIR) as static files.
 //!
 //! Environment: PORT (8080), CLIENT_DIR (client/dist), ART_DIR (../AlteredBGA/img/illustrations),
@@ -19,6 +20,7 @@ mod ais;
 mod engines;
 mod replays;
 mod reunion;
+mod rooms;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -93,6 +95,9 @@ struct AppState {
     dirty: Mutex<HashSet<String>>,
     queue: Mutex<HashMap<String, Ticket>>,
     queue_changed: Notify,
+    /// Private rooms (`rooms`), by id
+    rooms: Mutex<HashMap<String, rooms::Room>>,
+    rooms_changed: Notify,
     next_id: AtomicU64,
     cards_json: Vec<u8>,
     decks_json: Vec<u8>,
@@ -148,6 +153,8 @@ async fn main() {
         dirty: Mutex::new(HashSet::new()),
         queue: Mutex::new(HashMap::new()),
         queue_changed: Notify::new(),
+        rooms: Mutex::new(HashMap::new()),
+        rooms_changed: Notify::new(),
         next_id: AtomicU64::new(1),
         cards_json: std::fs::read(format!("{}/cards.json", protocol_dir)).expect("protocol/data/cards.json"),
         decks_json: std::fs::read(format!("{}/decks.json", protocol_dir)).expect("protocol/data/decks.json"),
@@ -165,6 +172,7 @@ async fn main() {
             tokio::time::sleep(Duration::from_secs(persist_secs)).await;
             save_dirty(&s2).await;
             unload_idle(&s2).await;
+            s2.rooms.lock().await.retain(|_, r| rooms::keep(r));
         }
     });
 
@@ -179,6 +187,9 @@ async fn main() {
         .route("/api/v1/games/{id}", get(view_game))
         .route("/api/v1/games/{id}/answer", post(answer))
         .route("/api/v1/games/{id}/undo", post(undo))
+        .route("/api/v1/rooms", post(rooms::create_room))
+        .route("/api/v1/rooms/{id}", get(rooms::view_room))
+        .route("/api/v1/rooms/{id}/seat", post(rooms::update_seat))
         .route("/api/v1/matchmaking", post(join_queue))
         .route("/api/v1/matchmaking/{ticket}", get(poll_queue).delete(leave_queue))
         .route("/api/v1/replays", get(list_replays))
@@ -329,14 +340,16 @@ fn clean_name(n: Option<&str>, i: usize) -> String {
 }
 
 /// Creates a game on an engine thread, lets the bots play, gives each human seat a secret
-/// token (returned only to whoever created the game, or to the matched player) and registers it
-async fn insert_game(s: &Shared, id: String, players: [NewSeat; 2], seed: u64) -> Result<Value, String> {
+/// token (returned only to whoever created the game, or to the matched player; `tokens`: the ones
+/// of a private room, in seat order) and registers it
+async fn insert_game(s: &Shared, id: String, players: [NewSeat; 2], seed: u64, tokens: Option<[String; 2]>) -> Result<Value, String> {
     let game = s
         .pool
         .run(move || -> Result<ServerGame, String> {
             let mut game = ServerGame::new(id, players, seed)?;
             game.run_bots();
-            game.set_tokens(new_token);
+            let mut given = tokens.into_iter().flatten();
+            game.set_tokens(|| given.next().unwrap_or_else(new_token));
             Ok(game)
         })
         .await??;
@@ -409,7 +422,7 @@ async fn create_game(State(s): State<Shared>, Json(req): Json<NewGame>) -> Respo
     // The engine refuses a Reunion deck it cannot play (not legal, card not implemented...)
     let reunion = seats.iter().any(|s| s.reunion_deck.is_some());
     let id = new_game_id(&s);
-    match insert_game(&s, id, seats, req.seed.unwrap_or_else(seed)).await {
+    match insert_game(&s, id, seats, req.seed.unwrap_or_else(seed), None).await {
         Ok(v) => Json(v).into_response(),
         Err(e) if reunion => error(StatusCode::BAD_REQUEST, format!("Deck refused: {}", e), true),
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e, false),
@@ -710,7 +723,7 @@ async fn join_queue(State(s): State<Shared>, Json(req): Json<JoinQueue>) -> Resp
                 NewSeat { name: other.name.clone(), bot: false, deck: other.deck.clone(), ai: None, reunion_deck: other.reunion_deck.clone() },
                 NewSeat { name: name.clone(), bot: false, deck: req.deck.clone(), ai: None, reunion_deck: reunion_deck.clone() },
             ];
-            let created = match insert_game(&s, id.clone(), seats, seed()).await {
+            let created = match insert_game(&s, id.clone(), seats, seed(), None).await {
                 Ok(v) => v,
                 Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, e, false),
             };
