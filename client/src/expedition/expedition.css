@@ -1,6 +1,7 @@
 /* Expedition: the screens around a game (home, play, friend room, replays). Light pages, a slate rail,
    gold frames. Everything is scoped under .xp so the game screens keep their own look. */
-.xp {
+.xp,
+.xp-modal {
   --xp-bg: #dfe6ea;
   --xp-surface: #ffffff;
   --xp-surface-2: #f7f9fa;
@@ -17,7 +18,8 @@
   --xp-teal: #0f7f78;
   --xp-on-slate: #b9c7ce;
   --xp-title: 'Marcellus SC', 'Cormorant Garamond', Georgia, serif;
-
+}
+.xp {
   height: 100dvh;
   overflow-y: auto;
   background: var(--xp-bg);
@@ -110,20 +112,15 @@
   align-items: center;
   gap: 12px;
   padding: 6px 16px 6px 6px;
+  border: 0;
+  text-align: left;
+  color: var(--xp-ink);
   background: var(--xp-surface);
   border-radius: 999px;
   box-shadow: 0 0 0 1px var(--xp-line);
 }
-.xp-chip input {
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--xp-ink);
-  width: 140px;
-  padding: 2px 0;
-}
+button.xp-chip:hover { box-shadow: 0 0 0 1px var(--xp-gold), 0 4px 12px rgb(21 48 60 / 0.1); }
+.xp-chip strong { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .xp-chip small { display: block; font-size: 12px; color: var(--xp-muted); }
 
 /* Portraits: the art of a hero card, cropped */
@@ -146,3 +143,73 @@
   .xp-rail-item svg { width: 22px; height: 22px; }
   .xp-main { padding: 16px; }
 }
+
+/* Dialogs of these screens (deck choice): the same light theme. The dialog is rendered outside .xp, so it
+   carries the theme itself and maps the variables of the shared components (deck grid, Reunion deck). */
+.modal.xp-modal {
+  --panel: var(--xp-surface-2);
+  --panel-strong: var(--xp-surface);
+  --panel-solid: var(--xp-parchment);
+  --line: var(--xp-line);
+  --text: var(--xp-ink);
+  --muted: var(--xp-muted);
+  --accent: var(--xp-teal);
+  --accent-soft: rgb(15 127 120 / 0.35);
+
+  color: var(--xp-ink);
+  background: var(--xp-parchment);
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--xp-gold), 0 0 0 5px var(--xp-parchment), 0 0 0 6px rgb(200 170 110 / 0.6), 0 24px 60px rgb(10 25 32 / 0.45);
+}
+.modal-backdrop:has(> .xp-modal) { background: rgb(14 30 38 / 0.6); }
+.xp-modal .modal-head { padding: 16px 16px 12px 24px; border-bottom: 1px solid #d8c79f; }
+.xp-modal .modal-title { font-family: var(--xp-title); font-weight: 400; font-size: 26px; }
+.xp-modal .modal-body { padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; }
+.xp-modal .modal-foot { padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid #d8c79f; }
+.xp-modal .btn.ghost { color: var(--xp-ink-2); border-color: transparent; }
+.xp-modal .btn.ghost:hover:not(:disabled) { background: rgb(21 48 60 / 0.06); }
+.xp-modal .xp-btn.gold { min-width: 140px; }
+.xp-modal :focus-visible { outline: 2px solid var(--xp-teal); outline-offset: 2px; }
+
+/* Tabs: starter decks / Altered Reunion */
+.xp-modal .deck-source { gap: 8px; }
+.xp-modal .tab {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--xp-ink-2);
+  background: var(--xp-surface);
+  box-shadow: inset 0 0 0 1px var(--xp-line);
+}
+.xp-modal .tab.on { color: var(--xp-ink); background: #e3f2f0; box-shadow: inset 0 0 0 2px var(--xp-teal); }
+
+/* Fields */
+.xp-field,
+.xp-modal .field { display: flex; flex-direction: column; gap: 6px; max-width: 640px; }
+.xp-field > span,
+.xp-modal .field > span { font-size: 13px; color: var(--xp-muted); }
+.xp-field input,
+.xp-modal .field input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--xp-ink);
+  background: var(--xp-surface);
+  box-shadow: inset 0 0 0 1px var(--xp-line);
+}
+.xp-field input { max-width: 320px; }
+.xp-field input:focus,
+.xp-modal .field input:focus { outline: none; box-shadow: inset 0 0 0 2px var(--xp-teal); }
+
+/* Starter decks and Reunion deck */
+.xp-modal .deck-faction h3 { font-family: var(--xp-title); font-weight: 400; text-transform: none; letter-spacing: 0.02em; font-size: 20px; }
+.xp-modal .deck-item { border-radius: 4px; }
+.xp-modal .deck-item:hover { background: rgb(255 255 255 / 0.7); }
+.xp-modal .deck-item.picked { background: var(--xp-surface); border-color: var(--xp-gold-deep); box-shadow: 0 8px 20px rgb(21 48 60 / 0.15); }
+.xp-modal .reunion-summary { border-radius: 4px; border: 0; background: var(--xp-surface); box-shadow: inset 0 0 0 1px var(--xp-line); }
+.xp-modal .reunion-summary.ok { box-shadow: inset 0 0 0 2px var(--xp-teal); }
+.xp-modal .lobby-error { color: #9b2c1f; }
+.xp-modal .spinner { border-color: rgb(21 48 60 / 0.2); border-top-color: var(--xp-teal); }

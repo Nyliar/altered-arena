@@ -5,6 +5,7 @@ import { api } from './client';
 let catalogPromise: Promise<CardCatalog> | null = null;
 let decksPromise: Promise<DeckSummary[]> | null = null;
 let catalogCache: CardCatalog | null = null;
+let decksCache: DeckSummary[] | null = null;
 
 export function loadCatalog(): Promise<CardCatalog> {
   if (!catalogPromise) {
@@ -16,7 +17,7 @@ export function loadCatalog(): Promise<CardCatalog> {
 
 export function loadDecks(): Promise<DeckSummary[]> {
   if (!decksPromise) {
-    decksPromise = api.decks();
+    decksPromise = api.decks().then((d) => (decksCache = d));
     decksPromise.catch(() => (decksPromise = null));
   }
   return decksPromise;
@@ -40,9 +41,11 @@ export function useCatalog(): { catalog: CardCatalog | null; error: string | nul
 }
 
 export function useDecks(): { decks: DeckSummary[] | null; error: string | null } {
-  const [decks, setDecks] = useState<DeckSummary[] | null>(null);
+  // Loaded once per page: a screen opened again shows them at once, without a flash of empty content
+  const [decks, setDecks] = useState<DeckSummary[] | null>(decksCache);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
+    if (decks) return;
     let live = true;
     loadDecks().then(
       (d) => live && setDecks(d),
@@ -51,7 +54,7 @@ export function useDecks(): { decks: DeckSummary[] | null; error: string | null 
     return () => {
       live = false;
     };
-  }, []);
+  }, [decks]);
   return { decks, error };
 }
 

@@ -4,7 +4,7 @@ import { artUrl, useCatalog, useDecks } from '../api/catalog';
 import { api, ApiError } from '../api/client';
 import { InspectProvider } from '../game/inspect';
 import { DeckGrid } from '../components/Picker';
-import { ReunionDeckPicker } from '../components/ReunionDeck';
+import { cachedReunionDeck, loadReunionDeck, ReunionDeckPicker } from '../components/ReunionDeck';
 import { Inspector } from '../components/Inspector';
 import { Modal } from '../components/Modal';
 import { toast } from '../game/toasts';
@@ -31,6 +31,9 @@ const AI_KINDS: [AiSummary['kind'], string, string][] = [
   ['deck', 'IA de deck', 'maîtrise une liste précise'],
   ['simple', 'Bot simple', 'pour découvrir le jeu'],
 ];
+
+/** The AIs of the server, read once per page (the hub opens again without waiting for them) */
+let aisCache: AiSummary[] | null = null;
 
 const fail = (e: unknown) => toast(e instanceof ApiError ? e.message : String(e));
 
@@ -67,17 +70,23 @@ export function Play({
   const [name, setName] = useState(savedName() || 'Joueur');
   const [deck, setDeck] = useState<string | null>(savedDeck());
   const [source, setSource] = useState<DeckSource>(savedDeckSource());
-  const [reunion, setReunion] = useState<ReunionDeckSummary | null>(null);
+  const [reunion, setReunion] = useState<ReunionDeckSummary | null>(() =>
+    savedDeckSource() === 'reunion' ? cachedReunionDeck(savedReunionDeck()) : null,
+  );
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ticket, setTicket] = useState<string | null>(null);
   const ticketRef = useRef<string | null>(null);
-  const [ais, setAis] = useState<AiSummary[] | null>(null);
+  const [ais, setAis] = useState<AiSummary[] | null>(aisCache);
   const [aiKind, setAiKind] = useState<AiSummary['kind']>('imitation');
   const [aiId, setAiId] = useState<string | null>(null);
 
   useEffect(() => {
-    api.ais().then(setAis, () => setAis([]));
+    if (aisCache) return;
+    api.ais().then(
+      (a) => setAis((aisCache = a)),
+      () => setAis([]),
+    );
   }, []);
   // A saved Altered Reunion deck is loaded by its picker, which only lives in the deck dialog: load it here too.
   // Not while the dialog is open (the picker sets the deck, and clears it while a new link loads), and
@@ -86,7 +95,7 @@ export function Play({
     const id = savedReunionDeck();
     if (source !== 'reunion' || !id || reunion || picking) return;
     let live = true;
-    api.reunionDeck(id).then(
+    loadReunionDeck(id).then(
       (d) => live && setReunion((prev) => prev ?? d),
       () => null,
     );
@@ -204,14 +213,13 @@ export function Play({
       <Shell current="play">
         <div className="xp-head">
           <h1>Jouer</h1>
-          <label className="xp-chip">
+          <button type="button" className="xp-chip" onClick={() => setPicking(true)} title="Pseudo et deck">
             {myHero ? <img className="xp-por" src={artUrl(myHero)} alt="" width={40} height={40} /> : <span className="xp-por play-por-empty" />}
             <span>
-              <span className="xp-sr">Votre pseudo</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} />
+              <strong>{name || 'Joueur'}</strong>
               <small>{deckName ? `Deck : ${deckName}` : 'Aucun deck choisi'}</small>
             </span>
-          </label>
+          </button>
         </div>
         {(catErr || deckErr) && <p className="play-error">Serveur injoignable : {catErr ?? deckErr}</p>}
 
@@ -377,12 +385,13 @@ export function Play({
       {picking && (
         <Modal
           wide
+          className="xp-modal"
           title="Votre deck"
           onClose={() => setPicking(false)}
           footer={
             <button
               type="button"
-              className="btn primary"
+              className="xp-btn gold"
               disabled={!chosen}
               onClick={() => {
                 remember();
@@ -393,6 +402,10 @@ export function Play({
             </button>
           }
         >
+          <label className="xp-field">
+            <span>Votre pseudo</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="Joueur" />
+          </label>
           <div className="deck-source" role="tablist" aria-label="Deck">
             {(
               [
@@ -417,7 +430,7 @@ export function Play({
           ) : decks && catalog ? (
             <DeckGrid decks={decks} catalog={catalog} selected={deck} onSelect={(d) => setDeck(d.id)} />
           ) : (
-            <p className="muted">Chargement des decks…</p>
+            <p className="xp-muted">Chargement des decks…</p>
           )}
         </Modal>
       )}

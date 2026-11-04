@@ -7,6 +7,22 @@ import './ReunionDeck.css';
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
+const summaries = new Map<string, ReunionDeckSummary>();
+
+/** A deck already read in this page, if any: shown at once when a screen opens again */
+export function cachedReunionDeck(id: string | null): ReunionDeckSummary | null {
+  return (id && summaries.get(id)) || null;
+}
+
+/** Reads a deck (decks-api, checked by the engine) and keeps its summary for the rest of the page */
+export async function loadReunionDeck(id: string, signal?: AbortSignal): Promise<ReunionDeckSummary> {
+  const cached = summaries.get(id);
+  if (cached) return cached;
+  const d = await api.reunionDeck(id, signal);
+  summaries.set(id, d);
+  return d;
+}
+
 /** The decks-api id in a pasted deck link (or the id itself) */
 export function deckIdOf(text: string): string | null {
   return text.match(UUID)?.[0].toLowerCase() ?? null;
@@ -26,21 +42,26 @@ export function ReunionDeckPicker({
   onChange: (deck: ReunionDeckSummary | null) => void;
 }) {
   const [text, setText] = useState(initialId ?? '');
-  const [deck, setDeck] = useState<ReunionDeckSummary | null>(null);
+  const [deck, setDeck] = useState<ReunionDeckSummary | null>(() => cachedReunionDeck(deckIdOf(initialId ?? '')));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { show } = useInspect();
   const id = deckIdOf(text);
 
   useEffect(() => {
+    setError(null);
+    const cached = cachedReunionDeck(id);
+    if (cached) {
+      setDeck(cached);
+      onChange(cached);
+      return;
+    }
     setDeck(null);
     onChange(null);
-    setError(null);
     if (!id) return;
     const ctrl = new AbortController();
     setLoading(true);
-    api
-      .reunionDeck(id, ctrl.signal)
+    loadReunionDeck(id, ctrl.signal)
       .then((d) => {
         setDeck(d);
         onChange(d);
@@ -61,7 +82,7 @@ export function ReunionDeckPicker({
   return (
     <div className="reunion-deck">
       <label className="field wide">
-        <span>Deck link or id (Altered Reunion deck builders: public decks, or your own)</span>
+        <span>Lien ou identifiant du deck (decks publics des deck builders Altered Reunion, ou les vôtres)</span>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -71,10 +92,10 @@ export function ReunionDeckPicker({
           autoCorrect="off"
         />
       </label>
-      {text && !id && <p className="muted">No deck id in this text: paste the link of the deck page.</p>}
+      {text && !id && <p className="muted">Aucun identifiant de deck dans ce texte : collez le lien de la page du deck.</p>}
       {loading && (
         <p className="reunion-status">
-          <span className="spinner" /> Reading the deck…
+          <span className="spinner" /> Lecture du deck…
         </p>
       )}
       {error && <p className="lobby-error">{error}</p>}
@@ -84,19 +105,19 @@ export function ReunionDeckPicker({
             type="button"
             className="reunion-hero"
             onClick={() => hero && show({ def: hero, mode: 'modal' })}
-            aria-label={hero ? `Show ${hero.name}` : undefined}
+            aria-label={hero ? `Voir ${hero.name}` : undefined}
           >
             <Card def={hero} size="small" />
           </button>
           <div className="reunion-info">
             <b>{deck.name}</b>
             <span className="muted">
-              {hero?.name ?? 'Unknown hero'} · {deck.size} cards
+              {hero?.name ?? 'Héros inconnu'} · {deck.size} cartes
             </span>
             {deck.playable ? (
-              <span className="reunion-ok">Ready to play</span>
+              <span className="reunion-ok">Prêt à jouer</span>
             ) : (
-              <span className="lobby-error">Cannot be played here: {deck.problem ?? 'refused'}</span>
+              <span className="lobby-error">Injouable ici : {deck.problem ?? 'refusé'}</span>
             )}
           </div>
         </div>

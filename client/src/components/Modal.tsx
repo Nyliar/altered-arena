@@ -9,12 +9,15 @@ export function Modal({
   children,
   footer,
   wide,
+  className = '',
 }: {
   title?: ReactNode;
   onClose?: () => void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Extra classes of the dialog (xp-modal: the light theme of the screens around a game) */
+  className?: string;
 }) {
   useEffect(() => {
     if (!onClose) return;
@@ -25,7 +28,7 @@ export function Modal({
   return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <motion.div
-        className={`modal ${wide ? 'wide' : ''}`}
+        className={`modal ${wide ? 'wide' : ''} ${className}`}
         role="dialog"
         aria-modal="true"
         initial={{ opacity: 0, y: 40 }}
@@ -37,7 +40,7 @@ export function Modal({
           <div className="modal-head">
             <div className="modal-title">{title}</div>
             {onClose && (
-              <button type="button" className="btn ghost icon" onClick={onClose} aria-label="Close">
+              <button type="button" className="btn ghost icon" onClick={onClose} aria-label="Fermer">
                 ✕
               </button>
             )}
