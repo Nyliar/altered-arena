@@ -9,14 +9,14 @@ export function TrackButton() {
   const { view, decision, ui, send, sending, you, auto } = useGameCtx();
 
   if (view.phase === 'ended') return <span className="track-btn idle">End</span>;
-  // Answered for the player; the end of a turn keeps its button (confirm now)
+  // Answered for the player; the end of a turn keeps its button (confirm now). Nothing to do: a
+  // greyed button that says whose turn it is
   if (!decision || (auto && !auto.countdown)) {
     const waitingOnOther = view.waitingFor.some((p) => p !== you);
     return (
-      <span className="track-btn idle" aria-live="polite">
-        <span className="tb-ring" />
-        <span className="tb-small">{waitingOnOther ? 'Opponent' : 'Resolving'}</span>
-      </span>
+      <button type="button" className="track-btn" disabled aria-live="polite">
+        <span className="tb-label">{waitingOnOther ? "Opponent's turn" : 'Resolving'}</span>
+      </button>
     );
   }
   const p = primaryAction(decision);

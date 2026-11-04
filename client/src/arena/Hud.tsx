@@ -51,7 +51,7 @@ export function ManaBar({ player, mine }: { player: PlayerView; mine: boolean })
 }
 
 /** Name and state of a player */
-export function PlayerChip({ player, mine, className }: { player: PlayerView; mine: boolean; className: string }) {
+export function PlayerChip({ player, mine, className, action }: { player: PlayerView; mine: boolean; className: string; action?: ReactNode }) {
   const { view, decision, send, you } = useGameCtx();
   const waiting = view.waitingFor.includes(player.id);
   const pickable = decision?.kind === 'player' && decision.players.includes(player.id);
@@ -66,7 +66,8 @@ export function PlayerChip({ player, mine, className }: { player: PlayerView; mi
       </span>
       {mine && you === null && <span className="pc-tag">Hand {player.handCount}</span>}
       {player.passed && <span className="pc-tag">Passed</span>}
-      {waiting && !mine && <span className="pc-tag thinking">thinking…</span>}
+      {waiting && !mine && !action && <span className="pc-tag thinking">thinking…</span>}
+      {action}
     </div>
   );
 }

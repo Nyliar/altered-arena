@@ -47,7 +47,8 @@
 .board-card.is-playable .card { box-shadow: 0 0 0 2px #69db7c, 0 0 14px #69db7c; }
 .board-card.is-selectable .card { box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent); animation: glow 1.4s ease-in-out infinite; }
 .board-card.is-picked .card { box-shadow: 0 0 0 4px #fff, 0 0 22px var(--accent); animation: none; }
-.board-card.is-picked .flip { translate: 0 -6%; }
+.board-card.is-picked .flip,
+.board-card.is-mana-pending .flip { translate: 0 -6%; }
 .board-card.is-source .card { box-shadow: 0 0 0 3px var(--accent-2), 0 0 22px var(--accent-2); }
 .board-card.is-selected .card { box-shadow: 0 0 0 4px #fff, 0 0 24px #69db7c; }
 .board-card.is-dragged { visibility: hidden; }

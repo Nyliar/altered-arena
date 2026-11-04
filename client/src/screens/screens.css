@@ -47,7 +47,6 @@
   text-align: center;
 }
 .spinner.big { width: 36px; height: 36px; border-width: 3px; }
-.switch-player.attn { border-color: var(--accent); animation: pulse 1.2s infinite; }
 .spectator-tag { font-size: 12px; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--accent-2); color: var(--accent-2); }
 
 /* Replays list */

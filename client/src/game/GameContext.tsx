@@ -31,6 +31,8 @@ export interface GameCtxValue {
   auto: ReturnType<typeof autoAnswer>;
   /** Resolve this choice (choiceKey) every time it is offered, until it is gone */
   repeatChoice: (key: string | null) => void;
+  /** Cards of my hand sent to the Mana zone that are still in hand (the engine waits for the other player) */
+  manaPending: Set<number>;
 }
 
 const Ctx = createContext<GameCtxValue | null>(null);
@@ -46,7 +48,7 @@ export function GameProvider({
   catalog,
   log,
   sending,
-  send,
+  send: sendRaw,
   readOnly = false,
   children,
 }: {
@@ -93,6 +95,27 @@ export function GameProvider({
   const zoneCards = useCallback((owner: PlayerId, zone: Zone) => zones.get(`${owner}:${zone}`) ?? [], [zones]);
   const def = useCallback((c: CardView | undefined | null) => cardDef(catalog, c), [catalog]);
   const aff = useMemo(() => affordances(decision, current), [decision, current]);
+
+  // Cards sent to the Mana zone stay face down until they get there: at the setup, the engine moves
+  // them only once the other player chose theirs. A new decision of mine ends it.
+  const [toMana, setToMana] = useState<{ decisionId: string; cardIds: number[] } | null>(null);
+  const send = useCallback(
+    async (a: AnswerBody) => {
+      const sent = a.type === 'select' && decision?.kind === 'select' && decision.toMana ? { decisionId: decision.id, cardIds: a.cardIds } : null;
+      if (sent) setToMana(sent);
+      const ok = await sendRaw(a);
+      if (!ok && sent) setToMana(null);
+      return ok;
+    },
+    [sendRaw, decision],
+  );
+  const manaPending = useMemo(
+    () =>
+      new Set(
+        toMana && (!decision || decision.id === toMana.decisionId) ? toMana.cardIds.filter((id) => byId.get(id)?.zone === 'hand') : [],
+      ),
+    [toMana, decision, byId],
+  );
 
   // Decisions without a real choice are answered for the player (once each: not again after an error)
   const [repeat, setRepeat] = useState<string | null>(null);
@@ -190,6 +213,7 @@ export function GameProvider({
     play,
     auto: shownAuto,
     repeatChoice,
+    manaPending,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

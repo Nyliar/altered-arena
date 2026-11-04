@@ -56,7 +56,7 @@ function parse(): Route {
   }
   // The play hub is the entry point (?play, ?play=friend, ?play=ai, and any other address)
   const m = q.get('play');
-  return { name: 'play', mode: m === 'friend' || m === 'ai' ? m : 'match' };
+  return { name: 'play', mode: m === 'friend' || m === 'ai' || m === 'self' ? m : 'match' };
 }
 
 export function App() {

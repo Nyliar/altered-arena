@@ -27,18 +27,27 @@ export interface LastGame {
 }
 export const rememberGame = (g: LastGame) => write(KEY_GAME, g);
 export const lastGame = () => read<LastGame>(KEY_GAME);
-export const savedName = () => read<string>(KEY_NAME) ?? '';
-export const saveName = (n: string) => write(KEY_NAME, n);
-export const savedDeck = () => read<string>(KEY_DECK);
-export const saveDeck = (d: string) => write(KEY_DECK, d);
+// `slot`: another set of name and deck (the second side of a game against oneself)
+export const savedName = (slot = '') => read<string>(KEY_NAME + slot) ?? '';
+export const saveName = (n: string, slot = '') => write(KEY_NAME + slot, n);
+export const savedDeck = (slot = '') => read<string>(KEY_DECK + slot);
+export const saveDeck = (d: string, slot = '') => write(KEY_DECK + slot, d);
 const KEY_DECK_SOURCE = 'arena.deckSource';
 const KEY_REUNION_DECK = 'arena.reunionDeck';
 export type DeckSource = 'starter' | 'reunion';
-export const savedDeckSource = () => read<DeckSource>(KEY_DECK_SOURCE) ?? 'starter';
-export const saveDeckSource = (s: DeckSource) => write(KEY_DECK_SOURCE, s);
+export const savedDeckSource = (slot = '') => read<DeckSource>(KEY_DECK_SOURCE + slot) ?? 'starter';
+export const saveDeckSource = (s: DeckSource, slot = '') => write(KEY_DECK_SOURCE + slot, s);
 /** The last Altered Reunion deck (decks-api id) */
-export const savedReunionDeck = () => read<string>(KEY_REUNION_DECK);
-export const saveReunionDeck = (id: string) => write(KEY_REUNION_DECK, id);
+export const savedReunionDeck = (slot = '') => read<string>(KEY_REUNION_DECK + slot);
+export const saveReunionDeck = (id: string, slot = '') => write(KEY_REUNION_DECK + slot, id);
+
+const KEY_SOLO = 'arena.soloGames';
+/** Games against oneself: this device plays both seats and may switch between them (never another game) */
+export function markSoloGame(gameId: string) {
+  const l = (read<string[]>(KEY_SOLO) ?? []).filter((g) => g !== gameId);
+  write(KEY_SOLO, [...l, gameId].slice(-30));
+}
+export const isSoloGame = (gameId: string) => (read<string[]>(KEY_SOLO) ?? []).includes(gameId);
 export const forgetGame = (gameId: string) => {
   if (lastGame()?.gameId === gameId) {
     try {

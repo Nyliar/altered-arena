@@ -176,3 +176,4 @@
   .play-controls { padding: 16px; }
   .play-ai-list { max-height: 320px; }
 }
+.play-self-hint { font-size: 14px; line-height: 1.45; }

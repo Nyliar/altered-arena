@@ -19,7 +19,18 @@ const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coa
  * The game table: the BGA mat tilted in perspective (CSS 3D, plain DOM), with the hand, the
  * prompt and the players around it. Cards changing zone fly between their places (flights.ts).
  */
-export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; connected: boolean; extraTop?: ReactNode }) {
+export function Arena({
+  onLeave,
+  connected,
+  extraTop,
+  oppAction,
+}: {
+  onLeave: () => void;
+  connected: boolean;
+  extraTop?: ReactNode;
+  /** A control on the opponent's name (a game against oneself: take their seat) */
+  oppAction?: ReactNode;
+}) {
   const { view, me, opp, log, you, catalog } = useGameCtx();
   const { layout: l, scale, portrait } = useArenaLayout();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -81,7 +92,7 @@ export function Arena({ onLeave, connected, extraTop }: { onLeave: () => void; c
             <Mat l={l} />
           </div>
         </div>
-        {opp && <PlayerChip player={opp} mine={false} className="chip-opp" />}
+        {opp && <PlayerChip player={opp} mine={false} className="chip-opp" action={oppAction} />}
         {me && <PlayerChip player={me} mine={you !== null} className="chip-me" />}
         {opp && <OppHand player={opp} />}
         <InfoChip onLeave={onLeave} connected={connected} onLog={() => setLogOpen((o) => !o)} unread={unread} />

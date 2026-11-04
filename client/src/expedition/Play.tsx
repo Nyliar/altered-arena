@@ -5,13 +5,13 @@ import { api, ApiError } from '../api/client';
 import { InspectProvider } from '../game/inspect';
 import { Inspector } from '../components/Inspector';
 import { toast } from '../game/toasts';
-import { saveToken } from '../screens/storage';
+import { markSoloGame, saveToken } from '../screens/storage';
 import { Shell } from './Shell';
 import { useDeckChoice } from './deckChoice';
 import { FACTIONS_FR, heroIndex } from './heroes';
 import './play.css';
 
-export type PlayMode = 'match' | 'friend' | 'ai';
+export type PlayMode = 'match' | 'friend' | 'ai' | 'self';
 
 const AI_KINDS: [AiSummary['kind'], string, string][] = [
   ['imitation', "IA d'imitation", 'joue comme un joueur de tournoi'],
@@ -55,6 +55,8 @@ export function Play({
   const { decks, error: deckErr } = useDecks();
   const [mode, setMode] = useState<PlayMode>(initialMode);
   const { name, chosen, hero: myHero, deckName, deckFaction, remember, open: pickDeck, dialog } = useDeckChoice(catalog, decks);
+  // The other side of a game against oneself: its own saved name and deck
+  const second = useDeckChoice(catalog, decks, undefined, { slot: '.self2', defaultName: 'Joueur 2', title: 'Deck du second joueur' });
   const [busy, setBusy] = useState(false);
   const [ticket, setTicket] = useState<string | null>(null);
   const ticketRef = useRef<string | null>(null);
@@ -147,6 +149,25 @@ export function Play({
     }
   }
 
+  /** Both seats on this device: the player plays one deck, then the other, switching point of view */
+  async function playSelf() {
+    if (!chosen) return pickDeck();
+    if (!second.chosen) return second.open();
+    remember();
+    second.remember();
+    setBusy(true);
+    try {
+      const g = await api.createGame({ players: [{ name, ...chosen }, { name: second.name === name ? `${second.name} 2` : second.name, ...second.chosen }] });
+      for (const p of g.players) saveToken(g.gameId, p.id, p.token);
+      markSoloGame(g.gameId);
+      onJoin(g.gameId, g.players[0].id, g.players[0].token);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function pick(m: PlayMode) {
     if (ticket) leaveQueue();
     setMode(m);
@@ -157,6 +178,7 @@ export function Play({
     { m: 'match', tag: 'En ligne', title: "Recherche d'adversaire", text: 'Un joueur réel vous attend.' },
     { m: 'friend', tag: 'Privé', title: 'Défier un ami', text: 'Un salon, un lien à envoyer.' },
     { m: 'ai', tag: 'Entraînement', title: "Contre l'IA", text: 'Des IA qui jouent comme en tournoi.' },
+    { m: 'self', tag: 'Solo', title: 'Contre moi-même', text: 'Deux decks, vous jouez les deux camps.' },
   ];
 
   return (
@@ -194,6 +216,12 @@ export function Play({
                     </span>
                   )}
                   {t.m === 'ai' && (aiHero ? <img src={artUrl(aiHero)} alt="" /> : <img src="/img/card-back.jpg" alt="" />)}
+                  {t.m === 'self' && (second.hero ? <img src={artUrl(second.hero)} alt="" /> : <span className="mini-empty" />)}
+                  {t.m === 'self' && (
+                    <span className="mini-badge">
+                      <SwapIcon />
+                    </span>
+                  )}
                   {t.m === 'ai' && (
                     <span className="mini-badge">
                       <BotIcon />
@@ -231,6 +259,15 @@ export function Play({
                       </figcaption>
                     </>
                   )}
+                  {mode === 'self' && (
+                    <>
+                      <StageCard def={second.hero} />
+                      <figcaption>
+                        <strong>{second.name}</strong>
+                        <span>{second.hero ? second.hero.name : 'Choisissez un deck'}</span>
+                      </figcaption>
+                    </>
+                  )}
                   {mode === 'friend' && (
                     <>
                       <StageCard>
@@ -258,6 +295,16 @@ export function Play({
                   <span className="play-deck-change">Changer de deck</span>
                 </button>
                 {mode === 'match' && <span className="xp-muted">{ticket ? 'En attente d’un autre joueur…' : 'Un joueur en ligne, une partie complète.'}</span>}
+                {mode === 'self' && (
+                  <button type="button" className="xp-btn play-deck" onClick={second.open}>
+                    {second.hero ? <img className="xp-por" src={artUrl(second.hero)} alt="" width={40} height={40} /> : null}
+                    <span className="play-deck-name">
+                      <strong>{second.deckName ?? 'Choisir le second deck'}</strong>
+                      <small>{second.deckFaction ? `${second.name} · ${FACTIONS_FR[second.deckFaction]}` : 'Le camp adverse'}</small>
+                    </span>
+                    <span className="play-deck-change">Changer de deck</span>
+                  </button>
+                )}
                 {mode === 'friend' && (
                   <span className="xp-muted">Votre ami ouvre le lien et choisit son deck ; la partie démarre quand vous êtes prêts tous les deux. Aucun compte requis.</span>
                 )}
@@ -323,6 +370,14 @@ export function Play({
                   {busy ? 'Création…' : 'Créer le salon'}
                 </button>
               )}
+              {mode === 'self' && (
+                <>
+                  <span className="xp-muted play-self-hint">Vous jouez les deux camps sur cet appareil : le point de vue passe au joueur qui doit décider.</span>
+                  <button type="button" className="xp-btn gold big" disabled={busy} onClick={playSelf}>
+                    {busy ? 'Lancement…' : 'Lancer la partie'}
+                  </button>
+                </>
+              )}
               {mode === 'ai' && (
                 <button type="button" className="xp-btn gold big" disabled={busy || !ai} onClick={playAi}>
                   {busy ? 'Lancement…' : "Affronter l'IA"}
@@ -334,8 +389,17 @@ export function Play({
       </Shell>
 
       {dialog}
+      {second.dialog}
       <Inspector />
     </InspectProvider>
+  );
+}
+
+function SwapIcon() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M4 8h14l-4-4M20 16H6l4 4" />
+    </svg>
   );
 }
 

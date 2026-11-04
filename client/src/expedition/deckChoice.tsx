@@ -40,12 +40,14 @@ export function useDeckChoice(
   catalog: CardCatalog | null,
   decks: DeckSummary[] | null,
   onConfirm?: (name: string, chosen: ChosenDeck) => void,
+  /** Another saved name and deck than the player's own (the second side of a game against oneself) */
+  { slot = '', defaultName = 'Joueur', title = 'Votre deck' }: { slot?: string; defaultName?: string; title?: string } = {},
 ): DeckChoice {
-  const [name, setName] = useState(savedName() || 'Joueur');
-  const [deck, setDeck] = useState<string | null>(savedDeck());
-  const [source, setSource] = useState<DeckSource>(savedDeckSource());
+  const [name, setName] = useState(savedName(slot) || defaultName);
+  const [deck, setDeck] = useState<string | null>(savedDeck(slot));
+  const [source, setSource] = useState<DeckSource>(savedDeckSource(slot));
   const [reunion, setReunion] = useState<ReunionDeckSummary | null>(() =>
-    savedDeckSource() === 'reunion' ? cachedReunionDeck(savedReunionDeck()) : null,
+    savedDeckSource(slot) === 'reunion' ? cachedReunionDeck(savedReunionDeck(slot)) : null,
   );
   const [picking, setPicking] = useState(false);
 
@@ -53,7 +55,7 @@ export function useDeckChoice(
   // Not while the dialog is open (the picker sets the deck, and clears it while a new link loads), and
   // never over a deck chosen meanwhile.
   useEffect(() => {
-    const id = savedReunionDeck();
+    const id = savedReunionDeck(slot);
     if (source !== 'reunion' || !id || reunion || picking) return;
     let live = true;
     loadReunionDeck(id).then(
@@ -63,7 +65,7 @@ export function useDeckChoice(
     return () => {
       live = false;
     };
-  }, [source, reunion, picking]);
+  }, [source, reunion, picking, slot]);
 
   const starter = decks?.find((d) => d.id === deck) ?? null;
   const chosen: ChosenDeck | null =
@@ -74,17 +76,17 @@ export function useDeckChoice(
   const deckFaction = source === 'reunion' ? reunion?.faction : starter?.faction;
 
   function remember() {
-    saveName(name);
-    saveDeckSource(source);
-    if (source === 'reunion' && reunion) saveReunionDeck(reunion.id);
-    if (source === 'starter' && deck) saveDeck(deck);
+    saveName(name, slot);
+    saveDeckSource(source, slot);
+    if (source === 'reunion' && reunion) saveReunionDeck(reunion.id, slot);
+    if (source === 'starter' && deck) saveDeck(deck, slot);
   }
 
   const dialog = picking && (
     <Modal
       wide
       className="xp-modal"
-      title="Votre deck"
+      title={title}
       onClose={() => setPicking(false)}
       footer={
         <button
@@ -94,7 +96,7 @@ export function useDeckChoice(
           onClick={() => {
             remember();
             setPicking(false);
-            if (chosen) onConfirm?.(name || 'Joueur', chosen);
+            if (chosen) onConfirm?.(name || defaultName, chosen);
           }}
         >
           Valider
@@ -102,8 +104,8 @@ export function useDeckChoice(
       }
     >
       <label className="xp-field">
-        <span>Votre pseudo</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="Joueur" />
+        <span>Pseudo</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder={defaultName} />
       </label>
       <div className="deck-source" role="tablist" aria-label="Deck">
         {(
@@ -125,7 +127,7 @@ export function useDeckChoice(
         ))}
       </div>
       {source === 'reunion' ? (
-        <ReunionDeckPicker catalog={catalog} initialId={reunion?.id ?? savedReunionDeck()} onChange={setReunion} />
+        <ReunionDeckPicker catalog={catalog} initialId={reunion?.id ?? savedReunionDeck(slot)} onChange={setReunion} />
       ) : decks && catalog ? (
         <DeckGrid decks={decks} catalog={catalog} selected={deck} onSelect={(d) => setDeck(d.id)} />
       ) : (
@@ -134,5 +136,5 @@ export function useDeckChoice(
     </Modal>
   );
 
-  return { name: name || 'Joueur', chosen, hero, deckName, deckFaction, remember, open: () => setPicking(true), dialog };
+  return { name: name || defaultName, chosen, hero, deckName, deckFaction, remember, open: () => setPicking(true), dialog };
 }

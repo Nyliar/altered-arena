@@ -7,7 +7,7 @@ import { GameProvider } from '../game/GameContext';
 import { DragProvider } from '../game/drag';
 import { Arena } from '../arena/Arena';
 import { Inspector } from '../components/Inspector';
-import { forgetGame, rememberGame, tokenOf } from './storage';
+import { forgetGame, isSoloGame, rememberGame, tokenOf } from './storage';
 
 export function GameScreen({
   gameId,
@@ -33,6 +33,16 @@ export function GameScreen({
     else if (view?.phase === 'ended') forgetGame(gameId);
   }, [view, gameId, player, token]);
 
+  // A game against oneself (and only that: never a game against someone else, even with their token
+  // on this device): the other seat, and the point of view goes to whoever must decide
+  const other = view && isSoloGame(gameId) ? view.players.find((p) => p.id !== player && !p.bot && tokenOf(gameId, p.id)) : undefined;
+  const otherTurn = !!other && !!view && view.phase !== 'ended' && view.waitingFor.includes(other.id) && !view.waitingFor.includes(player ?? -1);
+  useEffect(() => {
+    if (!other || !otherTurn) return;
+    const t = setTimeout(() => onSwitchPlayer(other.id), 700);
+    return () => clearTimeout(t);
+  }, [other, otherTurn, onSwitchPlayer]);
+
   if (game.fatal || error)
     return (
       <div className="center-screen">
@@ -51,17 +61,21 @@ export function GameScreen({
       </div>
     );
 
-  // Hot seat on one device: switch to the other human seat (when this device holds its token)
-  const other = view.players.find((p) => p.id !== player && !p.bot && tokenOf(gameId, p.id));
-  const otherWaiting = other && view.waitingFor.includes(other.id);
+  // On the opponent's name: take their seat
   const switcher = other ? (
     <button
       type="button"
-      className={`btn ghost switch-player ${otherWaiting ? 'attn' : ''}`}
-      onClick={() => onSwitchPlayer(other.id)}
+      className={`pc-switch ${otherTurn ? 'attn' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSwitchPlayer(other.id);
+      }}
       title={`Play as ${other.name}`}
     >
-      ⇄ {other.name}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+        <path d="M4 8h14l-4-4M20 16H6l4 4" />
+      </svg>
+      Play
     </button>
   ) : null;
   const spectator = view.you === null ? <span className="spectator-tag">Spectator</span> : null;
@@ -71,13 +85,13 @@ export function GameScreen({
       ↶ Undo
     </button>
   ) : null;
-  const extra = spectator || switcher || undo ? <>{spectator}{switcher}{undo}</> : undefined;
+  const extra = spectator || undo ? <>{spectator}{undo}</> : undefined;
 
   return (
     <InspectProvider catalog={catalog} preferredRefs={refs}>
       <GameProvider view={view} catalog={catalog} log={game.log} sending={game.sending} send={game.send}>
         <DragProvider>
-          <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} />
+          <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} oppAction={switcher} />
         </DragProvider>
       </GameProvider>
       <Inspector />

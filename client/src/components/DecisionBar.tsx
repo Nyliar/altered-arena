@@ -310,17 +310,8 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   }, [decisionId]);
 
   if (view.phase === 'ended') return null;
-  if (!decision) {
-    const names = view.waitingFor
-      .filter((p) => p !== view.you)
-      .map((p) => view.players.find((x) => x.id === p)?.name ?? `Player ${p}`);
-    return (
-      <div className="decision-bar waiting" aria-live="polite">
-        <span className="spinner" />
-        <span>{names.length ? `Waiting for ${names.join(', ')}…` : 'Resolving…'}</span>
-      </div>
-    );
-  }
+  // Nothing to decide: no bar (the track button says whose turn it is)
+  if (!decision) return null;
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click

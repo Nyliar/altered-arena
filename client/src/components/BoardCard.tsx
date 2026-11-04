@@ -11,18 +11,20 @@ export const cardTransition = { type: 'spring', stiffness: 420, damping: 36, mas
 
 /** A card of the game: animated between zones (shared layoutId), interactive. */
 export const BoardCard = memo(function BoardCard({ id, size, className }: { id: number; size: CardSize; className?: string }) {
-  const { byId, def, aff, ui, decision } = useGameCtx();
+  const { byId, def, aff, ui, decision, manaPending } = useGameCtx();
   const { drag } = useDrag();
   const { draggable, handlers } = useCardPointer(id);
   const card = byId.get(id);
   const a = aff.get(id);
-  // A card picked for the Mana zone turns face down, as it will be there
-  const faceDown = !!a?.picked && decision?.kind === 'select' && !!decision.toMana;
+  // A card picked for the Mana zone turns face down, as it will be there (and stays so until it gets there)
+  const pendingMana = manaPending.has(id);
+  const faceDown = pendingMana || (!!a?.picked && decision?.kind === 'select' && !!decision.toMana);
   const cls = [
     'board-card',
     hasActions(a) ? 'is-playable' : '',
     a?.selectable ? 'is-selectable' : '',
     a?.picked ? 'is-picked' : '',
+    pendingMana ? 'is-mana-pending' : '',
     a?.source ? 'is-source' : '',
     ui.selected === id ? 'is-selected' : '',
     drag?.cardId === id ? 'is-dragged' : '',

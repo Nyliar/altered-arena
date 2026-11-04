@@ -670,6 +670,25 @@ body:has(.marker-ghost) { cursor: grabbing; }
 .pc-name small { font-family: var(--font-text); font-size: 0.7em; opacity: 0.7; }
 .pc-tag { padding: 2px 6px; border-radius: 6px; background: rgb(255 255 255 / 0.12); font-size: 0.85em; }
 .pc-tag.thinking { animation: blink 1.2s infinite; }
+/* A game against oneself: take the opponent's seat, from their name (the track button's look, small) */
+.pc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.3em 0.75em;
+  border: 2px solid var(--gold);
+  border-radius: 999px;
+  background: radial-gradient(circle at 40% 35%, #58a6ff 0%, #1f5fb8 60%, #123a78 100%);
+  box-shadow: 0 0 0 2px rgb(20 16 50 / 0.55);
+  color: #fff;
+  font: 700 calc(var(--chip-font) * 0.95) / 1 var(--font-title);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: filter 0.15s, transform 0.12s;
+}
+.pc-switch:hover { filter: brightness(1.15); }
+.pc-switch:active { transform: scale(0.95); }
+.pc-switch.attn { animation: arena-hot 1.4s ease-in-out infinite; }
 /* Mana gauges on the mat (BGA), beside the totals of each player's expeditions */
 .totals-cell { display: flex; align-items: center; justify-content: center; gap: calc(var(--mana-w) * 0.22); }
 .mana-bar {
