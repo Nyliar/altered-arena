@@ -87,18 +87,23 @@ pub fn new_node(g: &mut Game, kind: NodeKind, infos: Map<String, Value>, childs:
 /// `Engine::buildTree($t)`
 // PHP: Core/Engine.php:68
 pub fn build_tree(g: &mut Game, t: &Value) -> R<NodeId> {
-    let mut infos: Map<String, Value> = match t {
-        Value::Object(m) => m.clone(),
-        Value::Array(a) => a.iter().enumerate().map(|(i, v)| (i.to_string(), v.clone())).collect(),
+    // The node's infos are every key but `childs`, in order; the children are read in place (not
+    // copied with their parent's infos at each level)
+    let (infos, childs_ref): (Map<String, Value>, Option<&Value>) = match t {
+        Value::Object(m) => (m.iter().filter(|(k, _)| k.as_str() != "childs").map(|(k, v)| (k.clone(), v.clone())).collect(), m.get("childs")),
+        Value::Array(a) => (a.iter().enumerate().map(|(i, v)| (i.to_string(), v.clone())).collect(), None),
         // `$t['childs'] = ...` turns null (and false, deprecated) into an array
-        Value::Null | Value::Bool(false) => Map::new(),
+        Value::Null | Value::Bool(false) => (Map::new(), None),
         _ => return Err(PhpError::new("Error: Cannot use a scalar value as an array (buildTree)")),
     };
-    let childs_v = infos.get("childs").cloned().unwrap_or(Value::Null);
-    let childs_v = if childs_v.is_null() { php::arr() } else { childs_v };
+    let empty = php::arr();
+    let childs_v = match childs_ref {
+        Some(v) if !v.is_null() => v,
+        _ => &empty,
+    };
     let type_v = infos.get("type").cloned().unwrap_or(Value::Null);
     let ty = if type_v.is_null() {
-        if php::empty(&childs_v) {
+        if php::empty(childs_v) {
             "leaf".to_string()
         } else {
             "seq".to_string()
@@ -107,11 +112,10 @@ pub fn build_tree(g: &mut Game, t: &Value) -> R<NodeId> {
         php::strval(&type_v)
     };
     let mut childs = vec![];
-    for c in php::vals(&childs_v) {
+    for c in php::vals(childs_v) {
         childs.push(build_tree(g, c)?);
     }
     let kind = NodeKind::from_str(&ty)?;
-    infos.shift_remove("childs");
     Ok(new_node(g, kind, infos, childs))
 }
 

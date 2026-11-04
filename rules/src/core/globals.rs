@@ -214,16 +214,16 @@ pub fn is(g: &mut Game, name: &str) -> R<bool> {
 }
 
 /// `Globals::set<Name>($v)`: ints and bools are cast
-pub fn set(g: &mut Game, name: &str, v: Value) -> R<Value> {
+pub fn set(g: &mut Game, name: &str, v: Value) -> R<()> {
     let t = check(g, name)?;
     let v = match t {
         "int" => json!(php::intval(&v)),
         "bool" => json!(php::truthy(&v)),
         _ => v,
     };
-    Arc::make_mut(&mut g.globals).insert(name.to_string(), GlobalSlot::new(v.clone()));
+    Arc::make_mut(&mut g.globals).insert(name.to_string(), GlobalSlot::new(v));
     g.globals_clean &= !clean_bit(name);
-    Ok(v)
+    Ok(())
 }
 
 /// A variable written outside `set` (its value must be read back at the next fetch)
