@@ -79,12 +79,21 @@ export function Play({
   useEffect(() => {
     api.ais().then(setAis, () => setAis([]));
   }, []);
-  // A saved Altered Reunion deck is loaded by its picker, which only lives in the deck dialog: load it here too
+  // A saved Altered Reunion deck is loaded by its picker, which only lives in the deck dialog: load it here too.
+  // Not while the dialog is open (the picker sets the deck, and clears it while a new link loads), and
+  // never over a deck chosen meanwhile.
   useEffect(() => {
     const id = savedReunionDeck();
-    if (source !== 'reunion' || !id || reunion) return;
-    api.reunionDeck(id).then(setReunion, () => null);
-  }, [source, reunion]);
+    if (source !== 'reunion' || !id || reunion || picking) return;
+    let live = true;
+    api.reunionDeck(id).then(
+      (d) => live && setReunion((prev) => prev ?? d),
+      () => null,
+    );
+    return () => {
+      live = false;
+    };
+  }, [source, reunion, picking]);
   // Leave the queue when the screen closes
   useEffect(
     () => () => {
@@ -377,7 +386,15 @@ export function Play({
           title="Votre deck"
           onClose={() => setPicking(false)}
           footer={
-            <button type="button" className="btn primary" disabled={!chosen} onClick={() => setPicking(false)}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!chosen}
+              onClick={() => {
+                remember();
+                setPicking(false);
+              }}
+            >
               Valider
             </button>
           }
