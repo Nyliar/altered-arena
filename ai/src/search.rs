@@ -151,6 +151,9 @@ pub fn rollout_day(g: &mut Game, max: usize) -> usize {
     n
 }
 
+/// The class of Haven, Bravos Bastion (AX), whose {T} boosts the next Character played from Reserve
+const HAVEN: &str = "AX_Rare_HavenBravosBastion";
+
 fn is_mana_choice(d: &Value) -> bool {
     d["kind"] == "select" && d["prompt"].as_str().unwrap_or("").to_lowercase().contains("mana")
 }
@@ -198,8 +201,36 @@ impl Ai {
     }
 
     pub fn choose(&mut self, obs: &Observation, d: &Value, rng: &mut ChaCha8Rng) -> Value {
-        self.last_scores.clear();
+        if d["kind"] != "turn" {
+            return self.choose_from(obs, d, legal::candidates(d), rng);
+        }
+        // Haven, Bravos Bastion: {T} boosts the next Character played from Reserve, until the end
+        // of the turn (any card played ends it). Its tap is not searched on its own: it is played
+        // just before the chosen Reserve Character, and once a boost is pending only Reserve
+        // Characters are played.
+        let view = obs.view();
+        let card = |id: &Value| view["cards"].as_array().and_then(|cs| cs.iter().find(|c| c["id"] == *id)).cloned().unwrap_or(Value::Null);
+        let is_haven = |a: &Value| a["type"] == "tap" && card(&a["cardId"])["ref"] == HAVEN;
+        let from_reserve = |a: &Value| {
+            let c = card(&a["cardId"]);
+            a["type"] == "play" && c["zone"] == "reserve" && c["owner"].as_i64() == Some(obs.me) && a["cardId"].as_i64().and_then(|id| obs.card_prop(id, "type")) == Some(json!("character"))
+        };
         let mut cands = legal::candidates(d);
+        let haven = cands.iter().find(|a| is_haven(a)).cloned();
+        cands.retain(|a| !is_haven(a));
+        if obs.global_int("nextReserveCharacterBoost") > 0 && cands.iter().any(&from_reserve) {
+            cands.retain(&from_reserve);
+        }
+        let a = self.choose_from(obs, d, cands, rng);
+        match haven {
+            Some(h) if from_reserve(&a) => h,
+            _ => a,
+        }
+    }
+
+    fn choose_from(&mut self, obs: &Observation, d: &Value, mut cands: Vec<Value>, rng: &mut ChaCha8Rng) -> Value {
+        self.last_scores.clear();
+        let all = cands.clone();
         if cands.is_empty() {
             return json!({"type": "pass"});
         }
@@ -261,7 +292,7 @@ impl Ai {
             evaluated.push((score, a));
         }
         if evaluated.is_empty() {
-            return legal::candidates(d).remove(0);
+            return all[0].clone();
         }
         self.last_scores = evaluated.iter().map(|(s, a)| (a.clone(), *s, None)).collect();
         // Turn decisions: the best candidates and the end of the turn, played on to the end of the day

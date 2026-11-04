@@ -61,6 +61,12 @@ impl<'a> Observation<'a> {
     pub fn opponent(&self) -> PId {
         sim::other(self.game, self.me)
     }
+
+    /// A public integer global of the game (0 when missing)
+    pub fn global_int(&self, name: &str) -> i64 {
+        let mut g = self.game.clone();
+        altered_rules::core::globals::get_int(&mut g, name).unwrap_or(0)
+    }
 }
 
 pub trait Agent: Send {
