@@ -99,6 +99,11 @@ impl Game {
         v1::build(self, player.map(|p| p as PId), game_id)
     }
 
+    /// The GameView without its decision (null), cheaper: what the board looks like to `player`
+    pub fn board_view(&mut self, player: Option<u32>) -> Result<Value, PhpError> {
+        v1::build_board(self, player.map(|p| p as PId))
+    }
+
     /// Bot players take every decision that is theirs (Arena::runBots)
     pub fn run_bots(&mut self) -> Result<(), PhpError> {
         arena::run_bots(self)

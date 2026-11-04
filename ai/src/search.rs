@@ -306,7 +306,7 @@ impl Ai {
                     continue;
                 }
                 self.sim_steps += 1 + finish_action(&mut s, me, self.params.finish_steps);
-                let view = s.view(Some(me as u32), "").unwrap_or(Value::Null);
+                let view = s.board_view(Some(me as u32)).unwrap_or(Value::Null);
                 total += eval::evaluate(&view, &self.params.weights);
                 ok += 1;
             }
@@ -349,7 +349,7 @@ impl Ai {
                         continue;
                     }
                     self.sim_steps += 1 + rollout_day(&mut s, self.params.rollout_steps);
-                    let view = s.view(Some(me as u32), "").unwrap_or(Value::Null);
+                    let view = s.board_view(Some(me as u32)).unwrap_or(Value::Null);
                     total += eval::evaluate(&view, &self.params.weights);
                     ok += 1;
                 }

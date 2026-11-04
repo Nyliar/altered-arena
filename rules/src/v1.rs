@@ -954,9 +954,19 @@ fn unique_def(p: &crate::game::PropMap) -> Value {
 /// first time (rows created with their default value).
 // PHP: server/src/V1.php:96
 pub fn build(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
+    build_with(g, you, game_id, true)
+}
+
+/// The GameView without its decision (`decision` null): what the board looks like to `you`,
+/// for the AIs' evaluations, without computing the state's arguments
+pub fn build_board(g: &mut Game, you: Option<PId>) -> R<Value> {
+    build_with(g, you, "", false)
+}
+
+fn build_with(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool) -> R<Value> {
     let mut copy = g.clone();
     crate::core::preferences::check_existence(&mut copy);
-    let view = build_view(&mut copy, you, game_id)?;
+    let view = build_view(&mut copy, you, game_id, with_decision)?;
     g.prefs = copy.prefs.clone();
     for (k, v) in copy.globals.iter() {
         if !g.globals.contains_key(k) && Some(&**v) == globals::var_type(k).map(globals::default_of).as_ref() {
@@ -999,11 +1009,11 @@ fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
     }
 }
 
-fn build_view(g: &mut Game, you: Option<PId>, game_id: &str) -> R<Value> {
+fn build_view(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool) -> R<Value> {
     let raw = match you {
-        Some(p) => Some(view_state(g, p)?),
-        None => {
-            g.begin_request(None)?;
+        Some(p) if with_decision => Some(view_state(g, p)?),
+        _ => {
+            g.begin_request(you)?;
             None
         }
     };

@@ -153,7 +153,7 @@ impl Snapshot {
     fn of(g: &Game, me: PId) -> Snapshot {
         let mut g = g.clone();
         let mut view = BTreeMap::new();
-        let v = g.view(Some(me as u32), "").unwrap_or(Value::Null);
+        let v = g.board_view(Some(me as u32)).unwrap_or(Value::Null);
         for k in ["cards", "players"] {
             flatten(&v[k], format!(".{}", k), &mut view);
         }

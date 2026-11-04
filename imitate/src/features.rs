@@ -381,14 +381,14 @@ pub fn extract(obs: &Observation, d: &Value, cands: &[Value], rng: &mut ChaCha8R
     let best_roll = search.and_then(|s| s.roll.iter().flatten().cloned().reduce(f64::max));
     let me = obs.me;
     let base = obs.determinize(rng);
-    let v0 = base.clone().view(Some(me as u32), "").unwrap_or(Value::Null);
+    let v0 = base.clone().board_view(Some(me as u32)).unwrap_or(Value::Null);
     let t0 = terms(&v0, &cfg.weights);
     let e0 = eval::evaluate(&v0, &cfg.weights);
     let mut bases = vec![base.clone()];
     let mut starts = vec![(t0, e0)];
     for _ in 1..cfg.copies.max(1) {
         let b = obs.determinize(rng);
-        let v = b.clone().view(Some(me as u32), "").unwrap_or(Value::Null);
+        let v = b.clone().board_view(Some(me as u32)).unwrap_or(Value::Null);
         starts.push((terms(&v, &cfg.weights), eval::evaluate(&v, &cfg.weights)));
         bases.push(b);
     }
@@ -613,10 +613,10 @@ pub fn extract(obs: &Observation, d: &Value, cands: &[Value], rng: &mut ChaCha8R
                 continue;
             }
             ok += 1;
-            let vi = s.view(Some(me as u32), "").unwrap_or(Value::Null);
+            let vi = s.board_view(Some(me as u32)).unwrap_or(Value::Null);
             push_deltas(&mut acc, "i", &terms(&vi, &cfg.weights), t0c);
             search::finish_action(&mut s, me, cfg.finish_steps);
-            let vf = s.view(Some(me as u32), "").unwrap_or(Value::Null);
+            let vf = s.board_view(Some(me as u32)).unwrap_or(Value::Null);
             push_deltas(&mut acc, "f", &terms(&vf, &cfg.weights), t0c);
             let w = winner_term(&vf);
             if w != 0.0 {

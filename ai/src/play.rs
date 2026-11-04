@@ -30,10 +30,10 @@ impl<'a> Observation<'a> {
         Observation { game, me, decks }
     }
 
-    /// The GameView of `me` (protocol v1)
+    /// The GameView of `me` (protocol v1) without its decision (null): the board as `me` sees it
     pub fn view(&self) -> Value {
         let mut g = self.game.clone();
-        g.view(Some(self.me as u32), "").unwrap_or(Value::Null)
+        g.board_view(Some(self.me as u32)).unwrap_or(Value::Null)
     }
 
     /// A copy of the game with what `me` cannot see dealt again at random
