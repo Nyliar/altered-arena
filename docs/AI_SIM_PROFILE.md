@@ -108,6 +108,30 @@ Structural: a typed engine (cards, nodes and globals as Rust types instead of JS
 `docs/PERFORMANCE.md` estimated as the way to the old engine's speed. It needs the
 non-regression net below.
 
+## Results of the speed work (branch `perf/sim-profiling`)
+
+Every step passed `tools/perf_gate.sh check` against the reference recorded at `a77f168`: the
+goldens file by file (7253/7263, the same 10 known differences), the rules tests, `bot_bench`'s
+checksum and `simbench`'s three checksums, all identical. Gains against the previous commit: the
+first three by wall time (`tools/perf_time.sh`, best of 3, idle machine), the others by CPU time
+(`tools/perf_ab.sh`, alternated runs, median of 3) because another session's tournament was then
+loading the machine; a few points are noise.
+
+| Commit | Change | Deck AI | Imitation AI | Simple bot |
+| --- | --- | --- | --- | --- |
+| `bbdd9b6` | Fx hasher for card properties, class data, globals | -3 % | -2 % | |
+| `37a6c51` | Card effect flow memoized per node in an evaluation scope | -10 % | -8 % | -20 % |
+| `ef9a8a0` | Targetable cards memoized per node in an evaluation scope | -11 % | -4 % | |
+| `a760eb3` | `build_tree` without copying subtrees; `globals::set` without a copy | -1 % | -10 % | -9 % |
+| `e6bc2a4` | Useless-play filter simulates Spells only | -3 % | -7 % | 0 |
+| `c75fb57` | AIs' views without the decision | 0 | -3 % | 0 |
+
+Behaviour-changing, judged by a match against the current AI (`imitate/examples/ab_imitation`):
+
+- **One deck AI search per imitation decision** (`Imitator::share_search`, off by default): 0.61x
+  the CPU per decision (95 ms instead of 155 ms), but it won 41 of 100 games against the current
+  imitation AI (BZH - Dodouce, D06 mirror; 95 % interval 31-51 %). Likely weaker: left off.
+
 ## Non-regression for deeper changes
 
 Today's net: the PHP goldens (`goldens/`, 6336 files: every card on three boards with every

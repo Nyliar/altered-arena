@@ -71,6 +71,9 @@ pub struct Imitator {
     pub cfg: Config,
     /// Some(t): draw from the softmax at temperature t instead of the best candidate
     pub temperature: Option<f64>,
+    /// The deck AI's pick (a feature) searched once, by the first member, and read by every
+    /// member, instead of once per member on its own redeal (the search is most of the time)
+    pub share_search: bool,
     recent: Vec<String>,
 }
 
@@ -91,7 +94,7 @@ impl Imitator {
         for (k, m) in shared.more.iter().enumerate() {
             members.push(Scorer { seed: m.seed, weights: combine(&m.weights, player.and_then(|p| p.more_offsets.get(k))), search: search() });
         }
-        Imitator { label: label.into(), members, cfg, temperature: None, recent: vec![] }
+        Imitator { label: label.into(), members, cfg, temperature: None, share_search: false, recent: vec![] }
     }
 
     /// The average score of each candidate over the members; member m redeals the hidden cards
@@ -99,9 +102,17 @@ impl Imitator {
     pub fn scores(&mut self, obs: &Observation, d: &Value, cands: &[Value], base: u64) -> Vec<f64> {
         let mut total = vec![0.0; cands.len()];
         let n = self.members.len() as f64;
-        for m in &mut self.members {
+        let mut first_pick = None;
+        for (i, m) in self.members.iter_mut().enumerate() {
             let mut rng = ChaCha8Rng::seed_from_u64(base ^ m.seed);
-            let pick = m.search.as_mut().map(|ai| features::search_pick(ai, obs, d, cands, &mut rng));
+            let pick = if self.share_search && i > 0 {
+                first_pick.clone()
+            } else {
+                m.search.as_mut().map(|ai| features::search_pick(ai, obs, d, cands, &mut rng))
+            };
+            if i == 0 {
+                first_pick = pick.clone();
+            }
             let feats = features::extract(obs, d, cands, &mut rng, &self.cfg, pick.as_ref());
             for (t, f) in total.iter_mut().zip(&feats) {
                 let refused = if f.iter().any(|(n, _)| n == "refused") { 1e6 } else { 0.0 };
