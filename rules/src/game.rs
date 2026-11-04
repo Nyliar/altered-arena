@@ -40,8 +40,10 @@ impl std::hash::Hasher for IdHasher {
 pub type Rows<V> = IndexMap<i64, V, std::hash::BuildHasherDefault<IdHasher>>;
 pub type PId = i64;
 pub type Props = Arc<PropMap>;
+/// A string-keyed map in insertion order (as PHP arrays and serde_json's maps) with a fast hasher
+pub type FastMap<V> = IndexMap<String, V, rustc_hash::FxBuildHasher>;
 /// The properties of a card class (`new $className(null)`)
-pub type ClassData = Arc<Map<String, Value>>;
+pub type ClassData = Arc<FastMap<Value>>;
 
 /// `$this->properties` of a card: the data of its class, shared by every card of the class, with
 /// the card's own values on top. Same keys, values and order as the PHP array (the class data,
@@ -49,16 +51,16 @@ pub type ClassData = Arc<Map<String, Value>>;
 #[derive(Clone, Debug, Default)]
 pub struct PropMap {
     base: Option<ClassData>,
-    own: Map<String, Value>,
+    own: FastMap<Value>,
 }
 
 impl PropMap {
     pub fn from_map(own: Map<String, Value>) -> PropMap {
-        PropMap { base: None, own }
+        PropMap { base: None, own: own.into_iter().collect() }
     }
 
     pub fn with_base(base: ClassData) -> PropMap {
-        PropMap { base: Some(base), own: Map::new() }
+        PropMap { base: Some(base), own: FastMap::default() }
     }
 
     pub fn get(&self, k: &str) -> Option<&Value> {
@@ -231,7 +233,7 @@ pub struct PrefRow {
 }
 
 /// `global_variables`: each value shared between copies of the game until written
-pub type Globals = IndexMap<String, GlobalSlot>;
+pub type Globals = FastMap<GlobalSlot>;
 
 /// A value of `global_variables`, shared between copies of the game. Large values are kept as
 /// their JSON text while the game waits (`Game::compact`) and decoded again when read: the

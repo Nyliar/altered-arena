@@ -48,6 +48,7 @@ name = "altered-rules"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "rustc-hash",
  "serde",
  "serde_json",
 ]

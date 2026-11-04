@@ -24,8 +24,8 @@ pub fn classes() -> &'static HashMap<String, ClassData> {
                 let mut v = v;
                 php::normalize(&mut v);
                 let m = match v {
-                    Value::Object(m) => m,
-                    _ => Map::new(),
+                    Value::Object(m) => m.into_iter().collect(),
+                    _ => Default::default(),
                 };
                 (k, Arc::new(m))
             })
@@ -771,7 +771,7 @@ pub fn get_card_class(uid: &str) -> R<CardObject> {
     let class_path = php::strval(php::get(refs, &uid));
     let class = php::explode("/", &class_path).get(1).cloned().unwrap_or_default();
     let props = classes().get(&class).ok_or_else(|| PhpError::new(format!("Error: Class \"\\ALT\\Cards\\{}\" not found", class_path.replace('/', "\\"))))?;
-    let mut card = CardObject { class, props: (**props).clone() };
+    let mut card = CardObject { class, props: props.iter().map(|(k, v)| (k.clone(), v.clone())).collect() };
     if let Some(icon_set) = get_icon_set(&uid) {
         card.set("setIcon", json!(icon_set));
     }

@@ -57,7 +57,7 @@ pub fn get_starter_deck_preview(g: &mut Game, pid: PId, deck_number: &Value) -> 
         if props.get("type") == Some(&json!("hero")) || php::truthy(props.get("token").unwrap_or(&Value::Null)) {
             continue;
         }
-        content.insert(i.to_string(), json!({"card": {"properties": Value::Object((*props).clone())}, "n": n}));
+        content.insert(i.to_string(), json!({"card": {"properties": Value::Object(props.iter().map(|(k, v)| (k.clone(), v.clone())).collect())}, "n": n}));
         i += 1;
     }
     Ok(json!({

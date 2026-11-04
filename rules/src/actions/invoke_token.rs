@@ -196,7 +196,7 @@ fn act_invoke_token(a: &InvokeToken, g: &mut Game, ctx: Ctx, location: &Value) -
     let mut last: Option<CardId> = None;
     let mut i: i64 = 0;
     while php::lt(&json!(i), &get_n(a, g, ctx)?) {
-        let mut props = Value::Object((*get_token(g, ctx)?).clone());
+        let mut props = Value::Object(get_token(g, ctx)?.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
 
         // Use the art variant chosen by the invoking player on the deck builder
         let token_type = get_ctx_arg(g, ctx, "tokenType");
