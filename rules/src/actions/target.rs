@@ -194,6 +194,17 @@ fn get_subtype_target_label(a: &Target, g: &Game, ctx: Ctx, default: &str) -> R<
 /// `getTargetableCards($player, $checkTough)`
 // PHP: Actions/Target.php:213
 pub(crate) fn get_targetable_cards(a: &Target, g: &mut Game, ctx: Ctx, player: Option<PId>, check_tough: bool) -> R<Vec<CardId>> {
+    // Inside an evaluation scope (`Game::eval_run`: the state does not change while it lasts)
+    // computed once per node, player and Tough check
+    if g.memo.is_none() {
+        return compute_targetable_cards(a, g, ctx, player, check_tough);
+    }
+    let key = format!("targetable|{:?}|{:?}|{}", ctx, player, check_tough);
+    let v = g.eval_run(key, |g| Ok(json!(compute_targetable_cards(a, g, ctx, player, check_tough)?)))?;
+    Ok(v.as_array().map(|ids| ids.iter().filter_map(|id| id.as_i64()).collect()).unwrap_or_default())
+}
+
+fn compute_targetable_cards(a: &Target, g: &mut Game, ctx: Ctx, player: Option<PId>, check_tough: bool) -> R<Vec<CardId>> {
     // Who is the target ?
     let pid = player_req(player, "getId")?;
     let mut pids = json!(players::get_all(g));
