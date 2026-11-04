@@ -52,3 +52,7 @@ second.
 
 Armored Jammer (20 tries each, 2026-11-04): the three Treyst imitation AIs play it 20/20; deck AI
 D06 never (20/20 pass), D05 once (19/20).
+With the rule that holds a removal for a better target (`ai/src/hold.rs`): every Treyst AI passes
+every position (10 tries each). In the Armored Jammer position the best hit now is Baba Yaga
+(6.25) and at the next turn Novice Studieux (8.5, in both redeals): held, but with little margin
+(the threshold is 1.25 x 6.25 + 0.5 = 8.3).

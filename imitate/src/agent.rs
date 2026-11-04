@@ -112,11 +112,12 @@ impl Imitator {
     }
 
     /// The answer, the hidden cards redealt from `base` (see `scores`). As the deck AI: the tap of
-    /// Haven, Bravos Bastion follows `search::HavenRule`, and plays that do nothing are left out
-    /// (`useful`)
+    /// Haven, Bravos Bastion follows `search::HavenRule`, plays that do nothing are left out
+    /// (`useful`), and so are removals worth keeping for a better target (`hold`)
     pub fn decide_seeded(&mut self, obs: &Observation, d: &Value, base: u64, rng: &mut ChaCha8Rng) -> Value {
         let (cands, haven) = HavenRule::split(obs, d, legal::candidates(d));
         let cands = altered_ai::useful::drop_useless_plays(obs, d, cands);
+        let cands = altered_ai::hold::drop_premature_removals(obs, d, cands);
         let a = self.pick(obs, d, cands, base, rng);
         haven.answer(obs, a)
     }

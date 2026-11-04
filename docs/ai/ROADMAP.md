@@ -18,7 +18,11 @@ Two kinds of AI, described in `docs/ai/IMITATION.md` and `ai/src/search.rs`:
   weights plus small per-player offsets, trained on 7,702 decisions of 74 tournament games.
   58.6 % held-out agreement (88 % top-3).
 - Fixed rules on top of both: Haven, Bravos Bastion taps only before a Reserve Character
-  (`search::HavenRule`); no card played for nothing (`ai/src/useful.rs`).
+  (`search::HavenRule`); no card played for nothing (`ai/src/useful.rs`); a card that destroys
+  an opponent's card (to the discard pile) is held when a clearly stronger target will be there at
+  the next turn (`ai/src/hold.rs`, with a hand-written card strength estimate: Hand Cost, rarity,
+  abilities, statistics). Tempo removals (back to Reserve or hand) and Characters are not held:
+  holding them lost games.
 
 Strength (Treyst round robin, 20 games per pair, 2026-11-04): imitation AIs 68–70 % wins, deck AIs
 14–41 %. Deck AI D04 has no card priors and wins 14 %.

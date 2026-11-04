@@ -2,6 +2,7 @@
 //! See `docs/plans/AI_TOURNAMENT.md` and `docs/ai/`.
 
 pub mod eval;
+pub mod hold;
 pub mod legal;
 pub mod play;
 pub mod positions;
