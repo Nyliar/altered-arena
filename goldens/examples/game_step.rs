@@ -110,12 +110,12 @@ fn diff_tables(g: &mut Game, t: &Value) {
     println!("--- tables diff (php vs rust)");
     if let Some(r) = g.tree.root {
         let tree = altered_rules::core::node::to_array(g, r);
-        g.globals.insert("engine".into(), tree);
+        std::sync::Arc::make_mut(&mut g.globals).insert("engine".into(), altered_rules::game::GlobalSlot::new(tree));
     }
     for row in t["global_variables"].as_array().into_iter().flatten() {
         let name = row["name"].as_str().unwrap_or("");
         let php: Value = serde_json::from_str(row["value"].as_str().unwrap_or("null")).unwrap_or(Value::Null);
-        let rust = g.globals.get(name).cloned().unwrap_or(Value::Null);
+        let rust = g.globals.get(name).map(|s| (**s).clone()).unwrap_or(Value::Null);
         if canon(&php) != canon(&rust) {
             println!("  global {}\n    php  {}\n    rust {}", name, php, rust);
         }
