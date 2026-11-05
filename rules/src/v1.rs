@@ -977,10 +977,11 @@ fn build_with(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool
     Ok(view)
 }
 
-/// A "you may" effect offered with Pass (one effect, then Pass): `declinable` when the decision it
-/// leads to, once chosen, can still be passed (a target to pick or not...), so that the client
-/// may choose it right away. Found with a dry run on a copy of the game. Only in the GameView:
-/// `decision()` stays as in PHP (goldens, bots).
+/// A "you may" effect offered with Pass (one effect, or several with the same text, then Pass):
+/// `declinable` when the decision it leads to, once chosen, can still be passed (a target to pick
+/// or not...), so that the client may choose it right away (identical effects: one of them, in any
+/// order). Found with a dry run on a copy of the game. Only in the GameView: `decision()` stays as
+/// in PHP (goldens, bots).
 fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
     if d["kind"] != json!("choice") {
         return;
@@ -989,13 +990,19 @@ fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
     let pass = crate::core::node::PASS;
     let effects: Vec<usize> = (0..choices.len()).filter(|i| choices[*i]["id"] != json!(pass)).collect();
     let can_pass = choices.iter().any(|c| c["id"] == json!(pass) && c["enabled"] == json!(true));
-    let [i] = effects[..] else { return };
-    let effect = &choices[i];
-    if !can_pass || effect["enabled"] != json!(true) {
+    let Some(&first) = effects.first() else { return };
+    if !can_pass || effects.iter().any(|&i| choices[i]["enabled"] != json!(true) || choices[i]["label"] != choices[first]["label"]) {
         return;
     }
+    let declinable: Vec<usize> = effects.into_iter().filter(|&i| declinable_effect(g, you, &choices[i])).collect();
+    for i in declinable {
+        d["choices"][i]["declinable"] = json!(true);
+    }
+}
+
+fn declinable_effect(g: &Game, you: PId, effect: &Value) -> bool {
     let mut copy = g.clone();
-    let declinable = (|| -> R<bool> {
+    (|| -> R<bool> {
         act(&mut copy, you, "actChooseAction", &json!([effect["id"]]))?;
         let raw = view_state(&mut copy, you)?;
         let Some(next) = (if raw.is_active { decision(&mut copy, &raw, you)? } else { None }) else { return Ok(false) };
@@ -1003,10 +1010,7 @@ fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
         let kind = next["kind"].as_str().unwrap_or("");
         Ok(same_source && kind != "turn" && kind != "confirm" && (next["canPass"] == json!(true) || (kind == "select" && next["min"] == json!(0))))
     })()
-    .unwrap_or(false);
-    if declinable {
-        d["choices"][i]["declinable"] = json!(true);
-    }
+    .unwrap_or(false)
 }
 
 /// Effects whose choice only leads to another step of the same card: a check that picks a branch

@@ -126,7 +126,10 @@ export function GameProvider({
   // Decisions without a real choice are answered for the player (once each: not again after an error)
   const [repeat, setRepeat] = useState<string | null>(null);
   const [resolveIntent, setResolveIntent] = useState<ResolveIntent | null>(null);
-  const auto = useMemo(() => autoAnswer(decision, repeat, confirmTurnPref(), resolveIntent), [decision, repeat, resolveIntent]);
+  const auto = useMemo(
+    () => autoAnswer(decision, repeat, confirmTurnPref(), resolveIntent, (id) => byId.get(id)?.ref),
+    [decision, repeat, resolveIntent, byId],
+  );
   // The intent lasts until a decision that is not one of its steps (another choice of the same card)
   useEffect(() => {
     if (!resolveIntent || !decision) return;

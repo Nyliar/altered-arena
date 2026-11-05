@@ -269,6 +269,14 @@ export const PASS_CHOICE = 99;
 /** Options of a choice that do the same thing (The Hunger's boosts...): same effect, same source */
 export const choiceKey = (c: ChoiceOption) => `${c.sourceCardId ?? ''}|${c.label}`;
 
+/** The same effect: same text, of the same card or of another copy of it (same card reference) */
+function sameEffect(a: ChoiceOption, b: ChoiceOption, refOf: (cardId: number) => string | null | undefined): boolean {
+  if (choiceKey(a) === choiceKey(b)) return true;
+  if (a.label !== b.label || a.sourceCardId === undefined || b.sourceCardId === undefined) return false;
+  const ref = refOf(a.sourceCardId);
+  return !!ref && ref === refOf(b.sourceCardId);
+}
+
 /** How long a target picked for the player is shown (focus and arrow) before it is sent */
 export const AUTO_TARGET_MS = 600;
 
@@ -295,6 +303,7 @@ export function autoAnswer(
   repeat: string | null = null,
   confirmTurn = false,
   intent: ResolveIntent | null = null,
+  refOf: (cardId: number) => string | null | undefined = () => undefined,
 ): { answer: AnswerBody; delay: number; countdown?: boolean } | null {
   if (!d) return null;
   const now = (answer: AnswerBody) => ({ answer, delay: 0 });
@@ -311,8 +320,10 @@ export function autoAnswer(
         return now({ type: 'choice', id: intent.accept ? effects[0].id : pass.id });
       // Every effect is impossible: only Pass is left
       if (!effects.length) return pass ? now({ type: 'choice', id: pass.id }) : null;
-      // One effect, maybe several times: the order does not matter
-      if (!pass && !d.canPass && effects.every((c) => choiceKey(c) === choiceKey(effects[0]))) return now({ type: 'choice', id: effects[0].id });
+      // One effect, maybe several times (of one card, or of copies of a card): the order does not
+      // matter. With Pass, only when each one can still be declined once chosen
+      const same = (c: ChoiceOption) => sameEffect(c, effects[0], refOf);
+      if (effects.every(same) && (pass ? effects.every((c) => c.declinable) : !d.canPass)) return now({ type: 'choice', id: effects[0].id });
       // "You may": the effect is chosen, the player passes its next step if they wish
       if (pass && effects.length === 1 && effects[0].declinable) return now({ type: 'choice', id: effects[0].id });
       return null;
