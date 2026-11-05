@@ -52,7 +52,8 @@ export interface GameCtxValue {
  */
 const StoreCtx = createContext<StoreApi<GameCtxValue> | null>(null);
 
-function useGameStore(): StoreApi<GameCtxValue> {
+/** The game store itself: event handlers read it with getState(), without subscribing */
+export function useGameStore(): StoreApi<GameCtxValue> {
   const s = useContext(StoreCtx);
   if (!s) throw new Error('useGameCtx outside GameProvider');
   return s;

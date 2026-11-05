@@ -13,10 +13,37 @@ interface DragState {
   dropped?: boolean;
   /** dropped elsewhere: the card goes back to its place */
   returning?: boolean;
+  /** dragged by a finger */
+  touch?: boolean;
+  /** a spell held by a finger over the Cancel zone */
+  cancelling?: boolean;
+  /**
+   * a spell held by a finger over the Cast zone. Not `over`: nothing else on the table reacts (the
+   * spell's drop zone on the tilted mat lit up, which a phone repainted on every frame)
+   */
+  casting?: boolean;
+}
+
+/**
+ * A spell dragged by a finger is not cast anywhere on the board, as it is with a mouse: a finger
+ * cannot easily take it back to the hand. Two large zones show instead, Cancel on the left and Cast
+ * on the right (SpellZones).
+ */
+const touchSpell = (s: DragState | null) => !!s?.touch && s.destinations.includes('spell');
+
+/** The spell zone under a point: 'cast', 'cancel' or null */
+function spellZoneAt(x: number, y: number): 'cast' | 'cancel' | null {
+  // The zones let pointer events through (elementsFromPoint skips them): their boxes are read
+  for (const el of document.querySelectorAll<HTMLElement>('[data-spell-zone]')) {
+    const r = el.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el.dataset.spellZone as 'cast' | 'cancel';
+  }
+  return null;
 }
 
 interface DragActions {
-  begin: (cardId: number, destinations: Destination[], x: number, y: number, from: HTMLElement) => void;
+  /** `touch`: the ghost is drawn above the finger (which would hide it), and larger */
+  begin: (cardId: number, destinations: Destination[], x: number, y: number, from: HTMLElement, touch?: boolean) => void;
   move: (x: number, y: number) => void;
   end: (drop: boolean) => void;
   /** The drag going on now (read in event handlers: no subscription) */
@@ -46,13 +73,13 @@ export function useDrag() {
  * Finds the drop zone under the pointer: the innermost element with data-drop among the allowed
  * destinations. A spell is cast anywhere on the board (data-cast), except back on the hand.
  */
-function dropAt(x: number, y: number, allowed: Destination[]): Destination | null {
+function dropAt(x: number, y: number, allowed: Destination[], board = true): Destination | null {
   for (const el of document.elementsFromPoint(x, y)) {
     const h = el as HTMLElement;
     if (h.closest?.('.arena-hand')) return null;
     const d = h.dataset?.drop as Destination | undefined;
     if (d && allowed.includes(d)) return d;
-    if (h.dataset?.cast !== undefined && allowed.includes('spell')) return 'spell';
+    if (board && h.dataset?.cast !== undefined && allowed.includes('spell')) return 'spell';
   }
   return null;
 }
@@ -60,11 +87,29 @@ function dropAt(x: number, y: number, allowed: Destination[]): Destination | nul
 /** Classes of the body during a drag: a spell is dragged, a spell is over the board */
 function bodyClasses(s: DragState | null) {
   const spell = !!s && !s.dropped && !s.returning && s.destinations.includes('spell');
-  document.body.classList.toggle('drag-spell', spell);
+  // A finger casts on the Cast zone only: the board is not lit as a target
+  document.body.classList.toggle('drag-spell', spell && !s!.touch);
   document.body.classList.toggle('drag-cast', spell && s!.over === 'spell');
 }
 
 const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
+
+/** Touch drags: the ghost is this much larger than the card in the hand, and sits above the finger */
+const TOUCH_GHOST_SCALE = 1.5;
+const TOUCH_GHOST_MAX_W = 140;
+
+/**
+ * Stops the browser from scrolling, zooming or going back while a finger drags a card. On iOS
+ * Safari touch-action alone is not enough (a pan cancels the pointer events): touchmove is
+ * cancelled as well. Returns the function that removes the listener.
+ */
+export function holdTouch(): () => void {
+  const stop = (e: TouchEvent) => {
+    if (e.cancelable) e.preventDefault();
+  };
+  window.addEventListener('touchmove', stop, { passive: false });
+  return () => window.removeEventListener('touchmove', stop);
+}
 
 /**
  * Where a card is drawn on the table: its centre, its width (without the rotation of the fan, and
@@ -125,6 +170,10 @@ export function DragProvider({ children }: { children: ReactNode }) {
   const source = useRef<HTMLElement | null>(null);
   const m = useRef<Motion>({ x: 0, y: 0, tx: 0, ty: 0, ry: 0, rx: 0, rz: 0, scale: 1, frame: 0 });
   const unlisten = useRef<(() => void) | null>(null);
+  /** The pointer position not yet hit tested (move -> next frame) */
+  const aim = useRef<{ x: number; y: number } | null>(null);
+  /** Touch drags: how far above the finger the ghost's centre is (px) */
+  const lift = useRef(0);
 
   const set = (s: DragState | null) => {
     dragRef.current = s;
@@ -134,6 +183,7 @@ export function DragProvider({ children }: { children: ReactNode }) {
 
   // One frame of the ghost: it eases towards its target, and leans with its speed
   const step = useCallback(() => {
+    hitTestRef.current();
     const s = dragRef.current;
     const g = ghostRef.current;
     const k = m.current;
@@ -189,14 +239,17 @@ export function DragProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const begin = useCallback(
-    (cardId: number, destinations: Destination[], x: number, y: number, from: HTMLElement) => {
+    (cardId: number, destinations: Destination[], x: number, y: number, from: HTMLElement, touch = false) => {
       cancelAnimationFrame(m.current.frame);
       source.current = from;
       const home = homeOf(from)!;
+      const width = touch ? Math.max(home.width, Math.min(TOUCH_GHOST_MAX_W, home.width * TOUCH_GHOST_SCALE)) : home.width;
+      // The finger holds the card by its lower part: the card shows, and still reaches the zones near the hand
+      lift.current = touch ? width * (450 / 324) * 0.3 : 0;
       // The ghost starts on the card, as it is drawn on the table
-      m.current = { x: home.x, y: home.y, tx: x, ty: y, ry: 0, rx: 0, rz: home.rot, scale: 1, frame: 0 };
-      setSize(home.width);
-      set({ cardId, destinations, over: null });
+      m.current = { x: home.x, y: home.y, tx: x, ty: y - lift.current, ry: 0, rx: 0, rz: home.rot, scale: 1, frame: 0 };
+      setSize(width);
+      set({ cardId, destinations, over: null, touch });
       m.current.frame = requestAnimationFrame(step);
       document.body.classList.add('is-dragging');
       // Follow the pointer on the window until the drag ends
@@ -205,6 +258,7 @@ export function DragProvider({ children }: { children: ReactNode }) {
       const onUp = () => endRef.current(true);
       const onCancel = () => endRef.current(false);
       const onKey = (e: KeyboardEvent) => e.key === 'Escape' && endRef.current(false);
+      const release = holdTouch();
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onCancel);
@@ -216,6 +270,7 @@ export function DragProvider({ children }: { children: ReactNode }) {
         window.removeEventListener('pointercancel', onCancel);
         window.removeEventListener('blur', onCancel);
         window.removeEventListener('keydown', onKey);
+        release();
         unlisten.current = null;
       };
     },
@@ -225,20 +280,47 @@ export function DragProvider({ children }: { children: ReactNode }) {
   const move = useCallback((x: number, y: number) => {
     const s = dragRef.current;
     if (!s || s.dropped || s.returning) return;
+    // A touch drag aims with the card, drawn above the finger
     m.current.tx = x;
-    m.current.ty = y;
-    const over = dropAt(x, y, s.destinations);
-    if (over !== s.over) set({ ...s, over });
+    m.current.ty = y - lift.current;
+    // What is under it is found in the next frame, once (a touch screen sends several moves per frame)
+    aim.current = { x, y };
   }, []);
+
+  /** The drop zone under the last pointer position, if it moved since the last frame */
+  const hitTest = () => {
+    const p = aim.current;
+    aim.current = null;
+    const s = dragRef.current;
+    if (!p || !s || s.dropped || s.returning) return;
+    const { x, y } = p;
+    const cy = y - lift.current;
+    if (touchSpell(s)) {
+      // The Cast and Cancel zones are large: the card or the finger may be on them
+      const zone = spellZoneAt(x, cy) ?? spellZoneAt(x, y);
+      const over = zone ? null : dropAt(x, cy, s.destinations, false);
+      const cancelling = zone === 'cancel';
+      const casting = zone === 'cast';
+      if (over !== s.over || cancelling !== !!s.cancelling || casting !== !!s.casting) set({ ...s, over, cancelling, casting });
+      return;
+    }
+    const over = dropAt(x, cy, s.destinations) ?? (cy !== y ? dropAt(x, y, s.destinations) : null);
+    if (over !== s.over) set({ ...s, over });
+  };
+  const hitTestRef = useRef(hitTest);
+  hitTestRef.current = hitTest;
 
   const end = useCallback(
     (drop: boolean) => {
+      // Released before the next frame: what is under the pointer now decides
+      hitTestRef.current();
       const s = dragRef.current;
       unlisten.current?.();
       document.body.classList.remove('is-dragging');
       // Already ended (released twice, or released then cancelled)
       if (!s || s.dropped || s.returning) return;
-      if (drop && s.over) {
+      const target = s.over ?? (s.casting ? 'spell' : null);
+      if (drop && target) {
         const k = m.current;
         k.tx = k.x;
         k.ty = k.y;
@@ -247,7 +329,7 @@ export function DragProvider({ children }: { children: ReactNode }) {
         set(dropped);
         // The ghost stays where it was dropped until the new view moves the card; meanwhile
         // another drag may have begun, which this must leave alone
-        void play(s.cardId, s.over).finally(() => {
+        void play(s.cardId, target).finally(() => {
           if (dragRef.current !== dropped) return;
           cancelAnimationFrame(m.current.frame);
           set(null);
@@ -284,6 +366,28 @@ export function DragProvider({ children }: { children: ReactNode }) {
           </div>,
           document.body,
         )}
+      {drag && touchSpell(drag) && !drag.dropped && !drag.returning && <SpellZones cast={!!drag.casting} cancel={!!drag.cancelling} />}
     </DragCtx.Provider>
+  );
+}
+
+/** A spell held by a finger: let it go on the left to cancel, on the right to cast */
+function SpellZones({ cast, cancel }: { cast: boolean; cancel: boolean }) {
+  return createPortal(
+    <div className="spell-zones" aria-hidden="true">
+      <div className={`spell-zone sz-cancel ${cancel ? 'on' : ''}`} data-spell-zone="cancel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+        <span>Cancel</span>
+      </div>
+      <div className={`spell-zone sz-cast ${cast ? 'on' : ''}`} data-spell-zone="cast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+        </svg>
+        <span>Cast</span>
+      </div>
+    </div>,
+    document.body,
   );
 }
