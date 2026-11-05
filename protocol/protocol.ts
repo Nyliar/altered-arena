@@ -247,6 +247,11 @@ export interface ChoiceOption {
   sourceCardId?: number;
   /** A "you may" effect (offered with Pass): once chosen, the decision it leads to can still be passed */
   declinable?: boolean;
+  /**
+   * The choice only leads to more steps of the same card (a check that picks a branch...) and then to
+   * this effect, offered with Pass: the label of that effect. GameView only.
+   */
+  resolvesTo?: string;
 }
 
 export interface ExpeditionOption {

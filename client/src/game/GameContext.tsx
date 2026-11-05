@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CardCatalog, CardDef, CardView, Decision, Destination, GameView, LogEntry, PlayerId, PlayerView, Zone } from '@protocol';
-import { affordances, autoAnswer, emptyUI, hasActions, togglePick, type Affordance, type UIState } from './decisions';
+import { affordances, autoAnswer, emptyUI, hasActions, togglePick, type Affordance, type ResolveIntent, type UIState } from './decisions';
 import type { AnswerBody } from './useGame';
 import { useInspect } from './inspect';
 import { cardDef } from '../api/catalog';
@@ -36,6 +36,8 @@ export interface GameCtxValue {
   /** The card whose effect is pointed at in the effects queue: it is lit on the board */
   focusSource: number | null;
   setFocusSource: (id: number | null) => void;
+  /** An effect picked in the queue whose last step (its "you may") is answered for the player */
+  setResolveIntent: (intent: ResolveIntent | null) => void;
 }
 
 const Ctx = createContext<GameCtxValue | null>(null);
@@ -123,7 +125,14 @@ export function GameProvider({
 
   // Decisions without a real choice are answered for the player (once each: not again after an error)
   const [repeat, setRepeat] = useState<string | null>(null);
-  const auto = useMemo(() => autoAnswer(decision, repeat, confirmTurnPref()), [decision, repeat]);
+  const [resolveIntent, setResolveIntent] = useState<ResolveIntent | null>(null);
+  const auto = useMemo(() => autoAnswer(decision, repeat, confirmTurnPref(), resolveIntent), [decision, repeat, resolveIntent]);
+  // The intent lasts until a decision that is not one of its steps (another choice of the same card)
+  useEffect(() => {
+    if (!resolveIntent || !decision) return;
+    const ofIt = decision.kind === 'choice' && decision.choices.some((c) => c.sourceCardId === resolveIntent.source);
+    if (!ofIt) setResolveIntent(null);
+  }, [decision, resolveIntent]);
   const autoDone = useRef<string | null>(null);
   const [autoFailed, setAutoFailed] = useState<string | null>(null);
   // Shown as resolving until the answer is in (a late view may still carry the decision)
@@ -220,6 +229,7 @@ export function GameProvider({
     manaPending,
     focusSource,
     setFocusSource,
+    setResolveIntent,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

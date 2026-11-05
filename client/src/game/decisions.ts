@@ -275,7 +275,19 @@ export const CONFIRM_TURN_MS = 2000;
  * the player still has the decision's buttons (Undo) until it is sent. `confirmTurn`: the player's
  * preference, wait CONFIRM_TURN_MS before confirming the end of a turn (else at once).
  */
-export function autoAnswer(d: Decision | null, repeat: string | null = null, confirmTurn = false): { answer: AnswerBody; delay: number; countdown?: boolean } | null {
+/** An effect picked in the effects queue that has steps after it (`resolvesTo`): what to answer at its last one */
+export interface ResolveIntent {
+  source: number;
+  label: string;
+  accept: boolean;
+}
+
+export function autoAnswer(
+  d: Decision | null,
+  repeat: string | null = null,
+  confirmTurn = false,
+  intent: ResolveIntent | null = null,
+): { answer: AnswerBody; delay: number; countdown?: boolean } | null {
   if (!d) return null;
   const now = (answer: AnswerBody) => ({ answer, delay: 0 });
   const shown = (answer: AnswerBody) => ({ answer, delay: AUTO_TARGET_MS });
@@ -286,6 +298,9 @@ export function autoAnswer(d: Decision | null, repeat: string | null = null, con
       const effects = on.filter((c) => c.id !== PASS_CHOICE);
       const again = repeat !== null && effects.find((c) => choiceKey(c) === repeat);
       if (again) return now({ type: 'choice', id: again.id });
+      // The effect picked in the queue, reached after its steps: done (or declined) as the player said
+      if (intent && pass && effects.length === 1 && effects[0].sourceCardId === intent.source && effects[0].label === intent.label)
+        return now({ type: 'choice', id: intent.accept ? effects[0].id : pass.id });
       // Every effect is impossible: only Pass is left
       if (!effects.length) return pass ? now({ type: 'choice', id: pass.id }) : null;
       // One effect, maybe several times: the order does not matter

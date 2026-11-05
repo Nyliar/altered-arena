@@ -17,8 +17,11 @@ const WHERE: Partial<Record<string, string>> = {
 
 const where = (c: CardView | undefined) => (c && typeof c.zone === 'string' ? (WHERE[c.zone] ?? '') : '');
 
-/** The label of a choice without its source's name in parentheses: the queue shows the card itself */
-const effectText = (c: ChoiceOption) => c.label.replace(/\s*\(\[\[[^\]]+\]\]\)\s*$/, '');
+/** What the effect does: the effect it leads to (after its checks), else its label without the source's name */
+const effectText = (c: ChoiceOption) => c.resolvesTo ?? c.label.replace(/\s*\(\[\[[^\]]+\]\]\)\s*$/, '');
+
+/** The card that set the effect off, when its label names it ("Check reaction to [[Winter Nova]]...") */
+const triggeredBy = (c: ChoiceOption) => (c.resolvesTo ? (/\[\[([^\]]+)\]\]/.exec(c.label)?.[1] ?? null) : null);
 
 /**
  * Effects that triggered together, beside End turn: one portrait per effect, the effect under the
@@ -27,7 +30,7 @@ const effectText = (c: ChoiceOption) => c.label.replace(/\s*\(\[\[[^\]]+\]\]\)\s
  * badge above End turn (a click on it brings the queue back).
  */
 export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExpand: () => void }) {
-  const { decision, byId, def, send, sending, setFocusSource, inspectCard } = useGameCtx();
+  const { decision, byId, def, send, sending, setFocusSource, inspectCard, setResolveIntent } = useGameCtx();
   const d = decision;
   const q = effectQueue(decision);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -49,11 +52,14 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
   const card = (c: ChoiceOption) => byId.get(c.sourceCardId!);
   const focusDef = def(card(focus));
   const n = q.effects.length;
-  const resolve = (c: ChoiceOption) => {
+  // An effect with steps after it: they are answered for the player, its "you may" as they chose
+  const resolve = (c: ChoiceOption, accept = true) => {
     if (!c.enabled || sending) return;
     setPicked(c.id);
+    setResolveIntent(c.resolvesTo && c.sourceCardId !== undefined ? { source: c.sourceCardId, label: c.resolvesTo, accept } : null);
     void send({ type: 'choice', id: c.id });
   };
+  const by = triggeredBy(focus);
 
   return (
     <>
@@ -62,8 +68,14 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
           <div className="eq-detail-head">
             <span className="eq-name">{focusDef?.name ?? 'Effect'}</span>
             <span className="eq-where">{where(card(focus))}</span>
+            {by && <span className="eq-by">after {by}</span>}
           </div>
           <RichText text={effectText(focus)} />
+          {focus.resolvesTo && (
+            <button type="button" className="eq-skip" disabled={!focus.enabled || sending} onClick={() => resolve(focus, false)}>
+              Skip this effect
+            </button>
+          )}
         </div>
         <section className="eq-list" aria-label="Triggered effects">
           <div className="eq-head">

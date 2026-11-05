@@ -1267,6 +1267,8 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 }
 .eq-detail-head { display: flex; align-items: baseline; gap: 8px; }
 .eq-name { font: 700 15px / 1.1 var(--font-title); letter-spacing: 0.04em; text-transform: uppercase; color: #ffd27a; }
+.eq-by { margin-left: auto; font-size: 11px; color: #ffe6a8; }
+.eq-skip { align-self: flex-end; margin-top: 2px; padding: 2px 10px; border: 1px solid rgb(201 195 239 / 0.4); border-radius: 999px; background: transparent; color: #c9c3ef; font-size: 11px; }
 .eq-where { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #a9a3d6; }
 .eq-list {
   display: flex;

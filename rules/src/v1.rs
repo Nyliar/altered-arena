@@ -1009,6 +1009,55 @@ fn mark_declinable(g: &Game, you: PId, d: &mut Value) {
     }
 }
 
+/// Effects whose choice only leads to another step of the same card: a check that picks a branch
+/// ("Check reaction to Winter Nova" of Moyo & Silk, then "Spell is higher than {7}"), then the
+/// effect itself, offered with Pass. Each choice that leads there gets `resolvesTo`, the label of
+/// that effect, so that the client shows the effect and answers the steps between for the player.
+/// Found with a dry run on a copy of the game. Only in the GameView: `decision()` stays as in PHP.
+fn mark_resolution(g: &Game, you: PId, d: &mut Value) {
+    if d["kind"] != json!("choice") {
+        return;
+    }
+    let Some(choices) = d["choices"].as_array() else { return };
+    let pass = crate::core::node::PASS;
+    let picks: Vec<(usize, Value, Value)> = choices
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c["id"] != json!(pass) && c["enabled"] == json!(true) && c.get("sourceCardId").is_some())
+        .map(|(i, c)| (i, c["id"].clone(), c["sourceCardId"].clone()))
+        .collect();
+    for (i, id, source) in picks {
+        let mut copy = g.clone();
+        let resolved = (|| -> R<Option<String>> {
+            act(&mut copy, you, "actChooseAction", &json!([id]))?;
+            // A few steps at most: forced branches of the same card, then its effect with Pass
+            for _ in 0..4 {
+                let raw = view_state(&mut copy, you)?;
+                let Some(next) = (if raw.is_active { decision(&mut copy, &raw, you)? } else { None }) else { return Ok(None) };
+                if next["kind"] != json!("choice") {
+                    return Ok(None);
+                }
+                let on: Vec<&Value> = next["choices"].as_array().map(|a| a.iter().filter(|c| c["enabled"] == json!(true)).collect()).unwrap_or_default();
+                let can_pass = on.iter().any(|c| c["id"] == json!(pass));
+                let effects: Vec<&Value> = on.iter().copied().filter(|c| c["id"] != json!(pass)).collect();
+                let [effect] = effects[..] else { return Ok(None) };
+                if effect.get("sourceCardId") != Some(&source) {
+                    return Ok(None);
+                }
+                if can_pass {
+                    return Ok(effect["label"].as_str().map(String::from));
+                }
+                act(&mut copy, you, "actChooseAction", &json!([effect["id"]]))?;
+            }
+            Ok(None)
+        })()
+        .unwrap_or(None);
+        if let Some(label) = resolved.filter(|l| Some(l.as_str()) != d["choices"][i]["label"].as_str()) {
+            d["choices"][i]["resolvesTo"] = json!(label);
+        }
+    }
+}
+
 fn build_view(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool) -> R<Value> {
     let raw = match you {
         Some(p) if with_decision => Some(view_state(g, p)?),
@@ -1153,6 +1202,7 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool
     };
     if let (Some(d), Some(p)) = (decision_v.as_mut(), you) {
         mark_declinable(g, p, d);
+        mark_resolution(g, p, d);
     }
     let log: Vec<Value> = crate::arena::log_for(g, you)
         .into_iter()
