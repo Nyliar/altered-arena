@@ -320,20 +320,24 @@ function Tile({ t, u, h, at }: { t: StormTile; u: number; h: number; at: number 
 /** Shift of a token whose region also holds the other player's: side by side, the opponent's on the left */
 const SHARED_SHIFT = 0.2;
 
-function sharesRegion(view: GameView, player: PlayerView, region: number) {
+/**
+ * A token in a marked region moves right of the marker. On one line (phones), a token whose region
+ * also holds the other player's moves aside too; on two lines each player has a line of their own.
+ */
+function shiftAt(view: GameView, player: PlayerView, region: number, mine: boolean, twoLanes: boolean) {
   const o = view.players.find((p) => p.id !== player.id);
-  return !!o && (o.expeditions.hero.position === region || o.expeditions.companion.position === region);
+  const shared = !twoLanes && !!o && (o.expeditions.hero.position === region || o.expeditions.companion.position === region);
+  const marked = view.regions.some((r) => r.index === region && r.marker);
+  return (shared ? (mine ? SHARED_SHIFT : -SHARED_SHIFT) : 0) + (marked ? MARKED_SHIFT : 0);
 }
 
-function Marker({ player, side, mine, other }: { player: PlayerView; side: Side; mine: boolean; other: boolean }) {
+function Marker({ player, side, mine, other, twoLanes }: { player: PlayerView; side: Side; mine: boolean; other: boolean; twoLanes: boolean }) {
   const { view } = useGameCtx('view');
   const pick = useExpeditionPick(player, side);
   const exp = player.expeditions[side];
   // Both expeditions of a player in the same region: side by side, each on its way (the hero one
-  // goes right); both players there: side by side too; a terrain marker: on its right
-  const marked = view.regions.some((r) => r.index === exp.position && r.marker);
-  const shared = sharesRegion(view, player, exp.position) ? (mine ? SHARED_SHIFT : -SHARED_SHIFT) : 0;
-  const dx = (other ? (side === 'hero' ? 0.22 : -0.22) : 0) + shared + (marked ? MARKED_SHIFT : 0);
+  // goes right); see shiftAt for the other player and the terrain marker
+  const dx = (other ? (side === 'hero' ? 0.22 : -0.22) : 0) + shiftAt(view, player, exp.position, mine, twoLanes);
   // As on BGA: an arrow on the side it would move to, at Dusk as things stand
   const moving = forecast(view, player, side).advances && view.phase !== 'night' && view.phase !== 'setup';
   // Where it is on the track (a fraction of its width): a translate, which the compositor animates
@@ -353,13 +357,12 @@ function Marker({ player, side, mine, other }: { player: PlayerView; side: Side;
   );
 }
 
-function Ghost({ player, side, mine }: { player: PlayerView; side: Side; mine: boolean }) {
+function Ghost({ player, side, mine, twoLanes }: { player: PlayerView; side: Side; mine: boolean; twoLanes: boolean }) {
   const { view } = useGameCtx('view');
   const f = forecast(view, player, side);
   if (!f.advances || view.phase === 'night' || view.phase === 'setup') return null;
   const next = Math.max(0, Math.min(7, f.next));
-  const shared = sharesRegion(view, player, next) ? (mine ? SHARED_SHIFT : -SHARED_SHIFT) : 0;
-  const dx = shared + (view.regions.some((r) => r.index === next && r.marker) ? MARKED_SHIFT : 0);
+  const dx = shiftAt(view, player, next, mine, twoLanes);
   return (
     <span
       className={`ghost-marker ${mine ? 'mine' : 'theirs'}`}
@@ -371,8 +374,11 @@ function Ghost({ player, side, mine }: { player: PlayerView; side: Side; mine: b
 /**
  * Centre of the totals post on each end of the track, in track units from that end: on the cream
  * part of the end card, between the hero (companion) emblem and region 0 (7), so both stay visible.
+ * The emblem reaches about 0.37 unit from the end and the tokens of region 0 (7) start near 1.36:
+ * the larger post of the desktop track (two lines, 0.78 unit wide) is centred between them.
  */
 const POST_X = 0.715;
+const POST_X_WIDE = 0.86;
 
 /** One player's statistics in a post: a cell per biome, dimmed out of their region, lit where they win */
 function PostRow({ player, side, mine }: { player: PlayerView; side: Side; mine: boolean }) {
@@ -399,7 +405,7 @@ function PostRow({ player, side, mine }: { player: PlayerView; side: Side; mine:
  * The statistics of both expeditions of one side, as a post at that end of the track: the
  * opponent's on top, the biomes, mine below, so each biome reads as one column.
  */
-function TotalsPost({ side, u }: { side: Side; u: number }) {
+function TotalsPost({ side, u, x }: { side: Side; u: number; x: number }) {
   const { me, opp, you } = useGameCtx('me', 'opp', 'you');
   if (!me || !opp) return null;
   const mineId = you ?? me.id;
@@ -408,7 +414,7 @@ function TotalsPost({ side, u }: { side: Side; u: number }) {
   return (
     <div
       className={`totals-post post-${side}`}
-      style={{ left: (side === 'hero' ? POST_X : TRACK_UNITS - POST_X) * u }}
+      style={{ left: (side === 'hero' ? x : TRACK_UNITS - x) * u }}
       role="group"
       aria-label={`${side === 'hero' ? 'Hero' : 'Companion'} expeditions. ${label(opp)}. ${label(me)}.`}
     >
@@ -435,7 +441,7 @@ function MatTrack({ l }: { l: ArenaLayout }) {
   const players = [opp, me].filter((p): p is PlayerView => !!p);
   return (
     <div className="mat-row mat-trackrow" style={rowBackground(l, 2)}>
-      <div className="track" style={{ width: trackW, height: h, left: HERO_X * l.plane.w - (TRACK_UNITS / 2) * u }}>
+      <div className={`track ${l.twoLanes ? 'two-lanes' : ''}`} style={{ width: trackW, height: h, left: HERO_X * l.plane.w - (TRACK_UNITS / 2) * u }}>
         <DropZone destination="spell" className="track-drop">
           <Tile key={`0-${t[0].id}`} t={t[0]} u={u} h={h} at={0} />
           <Tile key={`1-${t[1].id}`} t={t[1]} u={u} h={h} at={2} />
@@ -448,20 +454,21 @@ function MatTrack({ l }: { l: ArenaLayout }) {
             const same = p.expeditions.hero.position === p.expeditions.companion.position;
             return (
               <span key={p.id} className={`track-lane ${mine ? 'lane-mine' : 'lane-theirs'}`}>
-                <Ghost player={p} side="hero" mine={mine} />
-                <Ghost player={p} side="companion" mine={mine} />
-                <Marker player={p} side="hero" mine={mine} other={same} />
-                <Marker player={p} side="companion" mine={mine} other={same} />
+                <Ghost player={p} side="hero" mine={mine} twoLanes={l.twoLanes} />
+                <Ghost player={p} side="companion" mine={mine} twoLanes={l.twoLanes} />
+                <Marker player={p} side="hero" mine={mine} other={same} twoLanes={l.twoLanes} />
+                <Marker player={p} side="companion" mine={mine} other={same} twoLanes={l.twoLanes} />
               </span>
             );
           })}
         </DropZone>
-        {regions.map((r) => {
+        {regions.flatMap((r) => {
           const biomes = regionBiomes(r);
           // Face down: no biomes to show
-          if (!biomes?.length) return null;
-          return (
-            <span key={r.index} className="region-chips" style={{ left: regionCenter(r.index) * u }}>
+          if (!biomes?.length) return [];
+          // On two lines, at both edges of the track (by each player's line); on one, at the bottom
+          return (l.twoLanes ? ['top', 'bottom'] : ['bottom']).map((edge) => (
+            <span key={`${r.index}-${edge}`} className={`region-chips chips-${edge}`} style={{ left: regionCenter(r.index) * u }}>
               {biomes.map((b) => (
                 <span key={b} className={`tot-${b}`}>
                   <span className="tot-icon">
@@ -470,10 +477,10 @@ function MatTrack({ l }: { l: ArenaLayout }) {
                 </span>
               ))}
             </span>
-          );
+          ));
         })}
-        <TotalsPost side="hero" u={u} />
-        <TotalsPost side="companion" u={u} />
+        <TotalsPost side="hero" u={u} x={l.twoLanes ? POST_X_WIDE : POST_X} />
+        <TotalsPost side="companion" u={u} x={l.twoLanes ? POST_X_WIDE : POST_X} />
       </div>
     </div>
   );
