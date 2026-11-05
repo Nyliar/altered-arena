@@ -54,6 +54,7 @@ export function GameProvider({
   log,
   sending,
   send: sendRaw,
+  undoneTo = null,
   readOnly = false,
   children,
 }: {
@@ -62,6 +63,8 @@ export function GameProvider({
   log: LogEntry[];
   sending: boolean;
   send: (a: AnswerBody) => Promise<boolean>;
+  /** The decision an undo led back to: the player answers it (it may be one answered for them) */
+  undoneTo?: { id: string; n: number } | null;
   readOnly?: boolean;
   children: ReactNode;
 }) {
@@ -143,11 +146,22 @@ export function GameProvider({
   useEffect(() => {
     if (!shownAuto || !decisionId || sending || autoDone.current === decisionId) return;
     const t = setTimeout(() => {
+      // An undo may have led back here since the timer started
+      if (autoDone.current === decisionId) return;
       autoDone.current = decisionId;
-      void send(shownAuto.answer).then((ok) => ok || setAutoFailed(decisionId));
+      // Tagged: the server's undo goes back past it, to the player's last choice
+      void send({ ...shownAuto.answer, auto: true }).then((ok) => ok || setAutoFailed(decisionId));
     }, shownAuto.delay);
     return () => clearTimeout(t);
   }, [shownAuto, decisionId, sending, send]);
+  // Back by an undo: the decision there is not answered for the player (else the undo is played
+  // again at once), nor the effects they asked to resolve before
+  useEffect(() => {
+    if (!undoneTo) return;
+    autoDone.current = undoneTo.id;
+    setRepeat(null);
+    setResolveIntent(null);
+  }, [undoneTo]);
   // The player answers the current decision: its repeat must not answer it again
   const repeatChoice = useCallback(
     (key: string | null) => {

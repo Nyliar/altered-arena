@@ -289,8 +289,6 @@ interface DecisionBase {
   /** An optional step: the player may skip it */
   canPass?: boolean;
   passLabel?: string;
-  /** Undo the choices made since the last irreversible step */
-  canUndo?: boolean;
 }
 
 /** The Afternoon action: play a card (drag it to a destination), use a support or exhaust ability, or pass */
@@ -322,7 +320,7 @@ export interface ChoiceDecision extends DecisionBase {
 }
 
 export interface ConfirmDecision extends DecisionBase {
-  kind: 'confirm'; // end of turn: confirm (or undo)
+  kind: 'confirm'; // end of turn: confirm
 }
 
 export interface ExpeditionDecision extends DecisionBase {
@@ -391,7 +389,12 @@ export type Decision =
   | DeckDecision
   | ButtonsDecision;
 
-export type Answer = { decisionId: string } & (
+export type Answer = {
+  decisionId: string;
+  /** Sent by the client for the player (a decision without a real choice): the server's undo goes
+   * back past it, to before the player's last choice */
+  auto?: boolean;
+} & (
   | { type: 'play'; cardId: number; destination: Destination }
   | { type: 'support'; cardId: number }
   | { type: 'tap'; cardId: number }
@@ -408,7 +411,6 @@ export type Answer = { decisionId: string } & (
   | { type: 'deck'; deck: string }
   | { type: 'button'; key: string }
   | { type: 'pass' } // skip an optional step
-  | { type: 'undo' }
 );
 
 export interface NewGame {

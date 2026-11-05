@@ -89,7 +89,7 @@ export function GameScreen({
 
   return (
     <InspectProvider catalog={catalog} preferredRefs={refs}>
-      <GameProvider view={view} catalog={catalog} log={game.log} sending={game.sending} send={game.send}>
+      <GameProvider view={view} catalog={catalog} log={game.log} sending={game.sending} send={game.send} undoneTo={game.undoneTo}>
         <DragProvider>
           <ShownTargets.Provider value={stage.targets}>
             <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} oppAction={switcher} undo={undo} />

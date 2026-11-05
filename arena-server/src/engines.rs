@@ -54,9 +54,19 @@ pub struct RulesGame {
     pub seq_base: u64,
 }
 
+/// The answer `undo` (the engine's undo) is refused: the arena offers only the server's undo
+/// (`ServerGame::undo`), in games against bots
+const ENGINE_UNDO_REFUSED: &str = "Undo is only possible against bots, with the Undo button";
+
 impl RulesGame {
     /// Plays `e` (as `record::apply`) and records it once it is accepted
     fn play(&mut self, e: Event) -> Result<bool, String> {
+        // The engine's undo (BGA's, `actRestart`) is not offered: only the server's, against bots
+        if let Event::Answer { body, .. } | Event::Ai { body, .. } = &e {
+            if body["type"] == json!("undo") {
+                return Err(ENGINE_UNDO_REFUSED.into());
+            }
+        }
         let r = record::apply(&mut self.game, &e)?;
         self.record.events.push(e);
         Ok(r)
@@ -151,30 +161,36 @@ impl ServerGame {
         self.0.seq_base
     }
 
+    /// The last answer of player `pid` that was a choice of theirs: not one the client sent for
+    /// them (`"auto": true`: a decision without a real choice, answered again at once if the
+    /// undo stopped there) nor the engine's undo (games saved before it was refused)
+    fn last_real_answer(&self, pid: u32) -> Option<usize> {
+        self.0.record.events.iter().rposition(|e| match e {
+            Event::Answer { pid: p, body } => *p == pid && body["auto"] != json!(true) && body["type"] != json!("undo"),
+            _ => false,
+        })
+    }
+
     /// The player of `seat` may take back their answers: they play only against bots or AIs
-    /// and answered at least once
+    /// and made at least one choice
     pub fn can_undo(&self, seat: usize) -> bool {
         let g = &self.0;
         let Some(me) = g.seats.get(seat) else { return false };
-        !me.bot
-            && g.record.initial.is_some()
-            && g.seats.iter().enumerate().all(|(i, s)| i == seat || s.bot)
-            && g.record.events.iter().any(|e| matches!(e, Event::Answer { pid, .. } if *pid == me.id))
+        !me.bot && g.record.initial.is_some() && g.seats.iter().enumerate().all(|(i, s)| i == seat || s.bot) && self.last_real_answer(me.id).is_some()
     }
 
-    /// Takes back the last answer of the player of `seat`: the game is rebuilt from its record as
-    /// it was just before that answer, and every event after it is dropped. The engine's
-    /// randomness is seeded from the game and the number of acts, so the same answers lead again
-    /// to the same draws.
+    /// Takes back the last choice of the player of `seat`: the game is rebuilt from its record as
+    /// it was just before that answer, and every event after it is dropped (the answers sent
+    /// for the player after it too). The engine's randomness is seeded from the game and the
+    /// number of acts, so the same answers lead again to the same draws.
     pub fn undo(&mut self, seat: usize) -> Result<(), Refused> {
         if !self.can_undo(seat) {
             let against_bots = self.0.seats.iter().enumerate().all(|(i, s)| i == seat || s.bot);
             let msg = if against_bots { "Nothing to undo" } else { "Undo is only possible against bots" };
             return Err(Refused { status: if against_bots { 409 } else { 403 }, msg: msg.into(), user: true });
         }
+        let k = self.last_real_answer(self.0.seats[seat].id).unwrap_or(0);
         let g = &mut self.0;
-        let pid = g.seats[seat].id;
-        let k = g.record.events.iter().rposition(|e| matches!(e, Event::Answer { pid: p, .. } if *p == pid)).unwrap_or(0);
         let game = g.record.replay(k).map_err(|e| Refused { status: 500, msg: e, user: false })?;
         let seq = g.game.notif_seq + g.seq_base;
         g.seq_base = (seq + 1).saturating_sub(game.notif_seq);
@@ -247,10 +263,9 @@ impl ServerGame {
         let id = g.id.clone();
         let mut v = g.game.view(pid, &id).map_err(|e| e.0)?;
         v["seq"] = json!(g.game.notif_seq + g.seq_base);
-        // The engine's undo when it takes something back; else the client falls back on the
-        // server's undo (`canUndo` of the view), which takes back the last answer
-        if v["decision"]["canUndo"] == json!(true) && !g.game.engine_undo_has_effect() {
-            v["decision"].as_object_mut().map(|d| d.remove("canUndo"));
+        // The engine's undo (BGA's) is not offered, only the server's (`canUndo` of the view)
+        if let Some(d) = v["decision"].as_object_mut() {
+            d.remove("canUndo");
         }
         let can_undo = seat.is_some_and(|s| self.can_undo(s));
         let g = &mut self.0;
@@ -441,17 +456,15 @@ mod tests {
             .unwrap();
     }
 
-    /// The view offers the engine's undo only when it takes something back. The engine offers it
-    /// whenever a choice was counted, also after the last target of a turn, which ends the
-    /// engine inside the act and counts the choice in the next one: there the undo reverted to
-    /// the current position and the Undo button did nothing (game o8etju3)
+    /// The engine's undo (BGA's) is neither offered by the views nor accepted as an answer; the
+    /// server's undo still takes back the last answer
     #[test]
-    fn the_engine_undo_offered_by_the_view_always_takes_something_back() {
+    fn the_engine_undo_is_not_offered_nor_accepted() {
         std::thread::Builder::new()
             .stack_size(256 << 20)
             .spawn(|| {
-                let (mut offered, mut hidden) = (0, 0);
-                for seed in 1..=6 {
+                let mut engine_offers = 0;
+                for seed in 1..=3 {
                     let seats = [
                         NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
                         NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
@@ -459,55 +472,80 @@ mod tests {
                     let mut g = ServerGame::new("e".into(), seats, seed).unwrap();
                     g.run_bots();
                     let mut answers = 0;
-                    while answers < 120 && !g.ended() {
+                    while answers < 60 && !g.ended() {
                         let Some(d) = g.game().try_decision(2001).unwrap() else {
                             g.run_bots();
                             continue;
                         };
                         let view: Value = serde_json::from_slice(&g.view_json(Some(0)).unwrap()).unwrap();
+                        assert!(view["decision"].get("canUndo").is_none(), "seed {seed}: the view offers the engine's undo ({})", d["id"]);
                         if d["canUndo"] == json!(true) {
-                            let mut u = g.clone();
-                            u.answer(0, &legal::with_id(&d, &json!({"type": "undo"}))).map_err(|r| r.msg).unwrap();
-                            // The state of the cards and players, or the effects still to resolve (the decision)
-                            let pos = |g: &ServerGame| {
-                                let mut d = g.game().try_decision(2001).unwrap().unwrap_or_default();
-                                if let Some(d) = d.as_object_mut() {
-                                    d.remove("id");
-                                    d.remove("canUndo");
-                                }
-                                // Card ids left out: an undo that re-runs an invocation gives the token a new id
-                                let mut st = g.game().oracle_state();
-                                st.as_object_mut().map(|s| s.remove("nextCardId"));
-                                let mut cards: Vec<String> = st["cards"]
-                                    .as_array()
-                                    .into_iter()
-                                    .flatten()
-                                    .map(|c| {
-                                        let mut c = c.clone();
-                                        c.as_object_mut().map(|c| c.remove("id"));
-                                        c.to_string()
-                                    })
-                                    .collect();
-                                cards.sort();
-                                st["cards"] = json!(cards);
-                                (st, d)
-                            };
-                            let changed = pos(&u) != pos(&g);
-                            if view["decision"]["canUndo"] == json!(true) {
-                                offered += 1;
-                                assert!(changed, "seed {seed}: the view offers an engine undo that changes nothing ({})", d["id"]);
-                            } else {
-                                hidden += 1;
-                                assert!(!changed, "seed {seed}: the view hides an engine undo that takes something back ({})", d["id"]);
-                            }
+                            engine_offers += 1;
+                            let state = g.game().oracle_state();
+                            let r = g.answer(0, &legal::with_id(&d, &json!({"type": "undo"})));
+                            assert_eq!(r.err().map(|r| r.status), Some(400));
+                            assert_eq!(g.game().oracle_state(), state, "a refused undo changes nothing");
                         }
                         let a = legal::candidates(&d).into_iter().map(|c| legal::with_id(&d, &c)).find(|a| g.clone().answer(0, a).is_ok()).expect("an answer");
                         g.answer(0, &a).map_err(|r| r.msg).unwrap();
                         g.run_bots();
                         answers += 1;
                     }
+                    assert!(view_can_undo(&mut g), "seed {seed}: the server's undo must stay offered");
                 }
-                assert!(offered > 0 && hidden > 0, "the games must reach both cases: offered {offered}, hidden {hidden}");
+                assert!(engine_offers > 0, "the engine never offered its undo: the test checks nothing");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    fn view_can_undo(g: &mut ServerGame) -> bool {
+        let v: Value = serde_json::from_slice(&g.view_json(Some(0)).unwrap()).unwrap();
+        v["canUndo"] == json!(true)
+    }
+
+    /// The answers the client sent for the player (`"auto": true`) and the engine's undo of games
+    /// saved before it was refused are taken back with the player's choice before them: an undo
+    /// does not stop on a decision the client would answer again at once
+    #[test]
+    fn undo_goes_back_past_the_answers_sent_for_the_player() {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn(|| {
+                let seats = [
+                    NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                    NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                ];
+                let mut g = ServerGame::new("a".into(), seats, 5).unwrap();
+                g.run_bots();
+                let mut step = |g: &mut ServerGame, auto: bool| {
+                    loop {
+                        let Some(d) = g.game().try_decision(2001).unwrap() else {
+                            g.run_bots();
+                            continue;
+                        };
+                        let mut a = legal::candidates(&d).into_iter().map(|c| legal::with_id(&d, &c)).find(|a| g.clone().answer(0, a).is_ok()).expect("an answer");
+                        if auto {
+                            a["auto"] = json!(true);
+                        }
+                        g.answer(0, &a).map_err(|r| r.msg).unwrap();
+                        g.run_bots();
+                        return;
+                    }
+                };
+                step(&mut g, false);
+                let before_choice = g.game().oracle_state();
+                step(&mut g, false);
+                for _ in 0..4 {
+                    step(&mut g, true);
+                }
+                // An engine undo recorded by an older server (it is refused now)
+                g.0.record.events.push(Event::Answer { pid: 2001, body: json!({"type": "undo", "decisionId": "x"}) });
+                g.undo(0).map_err(|r| r.msg).unwrap();
+                assert_eq!(g.game().oracle_state(), before_choice, "back to before the last choice, past the answers sent for the player");
+                g.undo(0).map_err(|r| r.msg).unwrap();
+                assert!(!g.can_undo(0), "the first choice taken back: nothing left to undo");
             })
             .unwrap()
             .join()

@@ -37,11 +37,9 @@ export function Arena({
   /** Against bots: takes back the player's last move (a round button beside the main one) */
   undo?: { onUndo: () => void; disabled: boolean };
 }) {
-  const { view, me, opp, log, you, catalog, decision, send, sending } = useGameCtx();
-  // Undo: the engine takes back the choices since the last irreversible step (any decision that
-  // allows it); else, against bots, the server takes back my last move
-  const decisionUndo = decision?.canUndo ? { onUndo: () => void send({ type: 'undo' }), disabled: sending } : undefined;
-  const undoBtn = decisionUndo ?? undo;
+  const { view, me, opp, log, you, catalog, decision } = useGameCtx();
+  // Undo: against bots, the server takes back my last move (the engine's undo is not offered)
+  const undoBtn = undo;
   // Effects to resolve: the hand is not playable, it retracts; pointed at, it comes up and the
   // effects queue shrinks into a badge (back a moment after the pointer leaves the hand)
   const queueOn = !!effectQueue(decision);

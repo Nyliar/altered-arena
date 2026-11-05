@@ -14,8 +14,10 @@ export interface GameState {
   connected: boolean;
   fatal: string | null;
   send: (a: AnswerBody) => Promise<boolean>;
-  /** Takes back the player's last answer (games against bots: `view.canUndo`) */
+  /** Takes back the player's last choice (games against bots: `view.canUndo`) */
   undo: () => Promise<boolean>;
+  /** The decision the last undo led back to (`n` counts the undos): not answered for the player */
+  undoneTo: { id: string; n: number } | null;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -120,10 +122,13 @@ export function useGame(gameId: string, player: PlayerId | null, token: string |
     [gameId, player, token, accept],
   );
 
+  const [undoneTo, setUndoneTo] = useState<{ id: string; n: number } | null>(null);
   const undo = useCallback(async () => {
     setSending(true);
     try {
-      accept(await api.undo(gameId, player, token));
+      const v = await api.undo(gameId, player, token);
+      setUndoneTo((u) => (v.decision ? { id: v.decision.id, n: (u?.n ?? 0) + 1 } : null));
+      accept(v);
       return true;
     } catch (e) {
       const err = e as ApiError;
@@ -134,5 +139,5 @@ export function useGame(gameId: string, player: PlayerId | null, token: string |
     }
   }, [gameId, player, token, accept]);
 
-  return { view, log, sending, connected, fatal, send, undo };
+  return { view, log, sending, connected, fatal, send, undo, undoneTo };
 }

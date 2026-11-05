@@ -79,12 +79,6 @@ impl Game {
         v1::answer(self, player as i64, answer)
     }
 
-    /// Whether the engine's undo (answer `undo`, `actRestart`) would take anything back: PHP
-    /// offers it whenever `engineChoices` > 0, even when it reverts to the current position
-    pub fn engine_undo_has_effect(&self) -> bool {
-        helpers::log::undo_turn_has_effect(self)
-    }
-
     /// The state in the format of Arena::oracleState
     pub fn oracle_state(&self) -> Value {
         let mut g = self.clone();

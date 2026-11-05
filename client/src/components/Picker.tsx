@@ -66,11 +66,6 @@ export function SelectPicker({ decision, cardIds }: { decision: SelectDecision; 
           <button type="button" className="btn ghost" onClick={() => setHidden(true)}>
             View board
           </button>
-          {decision.canUndo && (
-            <button type="button" className="btn ghost" disabled={sending} onClick={() => void send({ type: 'undo' })}>
-              Undo
-            </button>
-          )}
           {decision.canPass && (
             <button type="button" className="btn" disabled={sending} onClick={() => void send({ type: 'pass' })}>
               {decision.passLabel ?? 'Pass'}

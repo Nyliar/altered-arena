@@ -72,15 +72,6 @@ pub fn get_undoable_steps(g: &Game) -> Vec<i64> {
     g.log.iter().rev().filter(|e| e.kind == LogKind::Step && e.id > cp).map(|e| e.id).collect()
 }
 
-/// Not in Log.php: whether `undoTurn` would change anything, i.e. a step was logged after the
-/// checkpoint or engine start it reverts to. `engineChoices` alone does not tell: an action whose
-/// act ends the engine and starts the next one (the last target of a turn) is counted by
-/// `resolveAction` after the new engine started, with nothing to revert in it.
-pub fn undo_turn_has_effect(g: &Game) -> bool {
-    let cp = get_last_checkpoint(g, true);
-    g.log.iter().any(|e| e.kind == LogKind::Step && e.id > cp)
-}
-
 /// `Log::undoTurn()`
 // PHP: Helpers/Log.php:114
 pub fn undo_turn(g: &mut Game) -> R<()> {
