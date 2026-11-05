@@ -133,7 +133,18 @@ export function PhaseBanner() {
  * My hand, fanned at the bottom; cards rise when hovered or tapped. A card being dragged leaves
  * the fan, which closes up (and opens again if the card comes back).
  */
-export function ArenaHand() {
+export function ArenaHand({
+  retracted = false,
+  inactive = false,
+  onEnter,
+  onLeave,
+}: {
+  /** Lowered to its top edge (effects to resolve: the hand is not playable) */
+  retracted?: boolean;
+  inactive?: boolean;
+  onEnter?: () => void;
+  onLeave?: () => void;
+}) {
   const { me, zoneCards, ui, you } = useGameCtx();
   const { drag } = useDrag();
   if (!me || you === null) return null;
@@ -144,7 +155,7 @@ export function ArenaHand() {
   const spread = Math.min(6, 30 / Math.max(n, 1));
   const step = n > 6 ? 0.62 : 0.8;
   return (
-    <div className="arena-hand" aria-label="Your hand">
+    <div className={`arena-hand ${retracted ? 'retracted' : ''} ${inactive ? 'inactive' : ''}`} aria-label="Your hand" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       {cards.map((c, j) => {
         // The card that left keeps the place it had, hidden
         const i = c.id === out ? j : fanned.indexOf(c);

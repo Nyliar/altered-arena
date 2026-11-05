@@ -10,6 +10,8 @@ import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
 import { CardActions } from './CardActions';
 import { TrackButton } from './TrackButton';
+import { EffectQueue } from './EffectQueue';
+import { effectQueue } from '../game/decisions';
 import { MarkerGhost } from './TerrainMarkers';
 import './arena.css';
 
@@ -34,7 +36,28 @@ export function Arena({
   /** Against bots: takes back the player's last move (a round button beside the main one) */
   undo?: { onUndo: () => void; disabled: boolean };
 }) {
-  const { view, me, opp, log, you, catalog } = useGameCtx();
+  const { view, me, opp, log, you, catalog, decision } = useGameCtx();
+  // Effects to resolve: the hand is not playable, it retracts; pointed at, it comes up and the
+  // effects queue shrinks into a badge (back a moment after the pointer leaves the hand)
+  const queueOn = !!effectQueue(decision);
+  const [peek, setPeek] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (!queueOn) setPeek(false);
+  }, [queueOn]);
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
+  const handEnter = () => {
+    clearTimeout(peekTimer.current);
+    if (queueOn) setPeek(true);
+  };
+  const handLeave = () => {
+    clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek(false), 150);
+  };
+  const expandQueue = () => {
+    clearTimeout(peekTimer.current);
+    setPeek(false);
+  };
   const { layout: l, scale, portrait } = useArenaLayout();
   const rootRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -99,9 +122,11 @@ export function Arena({
         {me && <PlayerChip player={me} mine={you !== null} className="chip-me" />}
         {opp && <OppHand player={opp} />}
         <InfoChip onLeave={onLeave} connected={connected} onLog={() => setLogOpen((o) => !o)} unread={unread} />
-        <Prompt />
-        <ArenaHand />
+        <ArenaHand retracted={queueOn && !peek} inactive={queueOn} onEnter={handEnter} onLeave={handLeave} />
         <div className="end-dock">
+          {/* Every decision is taken at the bottom of the screen, beside End turn */}
+          <Prompt />
+          <EffectQueue collapsed={peek} onExpand={expandQueue} />
           {undo && (
             <span className="undo-dock">
               <button type="button" className="undo-btn" disabled={undo.disabled} onClick={undo.onUndo} title="Take back your last move" aria-label="Undo your last move">

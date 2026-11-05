@@ -33,6 +33,9 @@ export interface GameCtxValue {
   repeatChoice: (key: string | null) => void;
   /** Cards of my hand sent to the Mana zone that are still in hand (the engine waits for the other player) */
   manaPending: Set<number>;
+  /** The card whose effect is pointed at in the effects queue: it is lit on the board */
+  focusSource: number | null;
+  setFocusSource: (id: number | null) => void;
 }
 
 const Ctx = createContext<GameCtxValue | null>(null);
@@ -98,6 +101,7 @@ export function GameProvider({
 
   // Cards sent to the Mana zone stay face down until they get there: at the setup, the engine moves
   // them only once the other player chose theirs. A new decision of mine ends it.
+  const [focusSource, setFocusSource] = useState<number | null>(null);
   const [toMana, setToMana] = useState<{ decisionId: string; cardIds: number[] } | null>(null);
   const send = useCallback(
     async (a: AnswerBody) => {
@@ -214,6 +218,8 @@ export function GameProvider({
     auto: shownAuto,
     repeatChoice,
     manaPending,
+    focusSource,
+    setFocusSource,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

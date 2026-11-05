@@ -11,7 +11,7 @@ export const cardTransition = { type: 'spring', stiffness: 420, damping: 36, mas
 
 /** A card of the game: animated between zones (shared layoutId), interactive. */
 export const BoardCard = memo(function BoardCard({ id, size, className }: { id: number; size: CardSize; className?: string }) {
-  const { byId, def, aff, ui, decision, manaPending } = useGameCtx();
+  const { byId, def, aff, ui, decision, manaPending, focusSource } = useGameCtx();
   const { drag } = useDrag();
   const { draggable, handlers } = useCardPointer(id);
   const card = byId.get(id);
@@ -26,6 +26,7 @@ export const BoardCard = memo(function BoardCard({ id, size, className }: { id: 
     a?.picked ? 'is-picked' : '',
     pendingMana ? 'is-mana-pending' : '',
     a?.source ? 'is-source' : '',
+    focusSource === id ? 'is-trigger-focus' : '',
     ui.selected === id ? 'is-selected' : '',
     drag?.cardId === id ? 'is-dragged' : '',
     card?.exhausted ? 'is-exhausted' : '',

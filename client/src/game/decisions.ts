@@ -212,6 +212,18 @@ export function primaryAction(d: Decision | null): PrimaryAction | null {
   return d.canPass ? { kind: 'pass', label: d.passLabel ?? 'Pass' } : null;
 }
 
+/**
+ * A choice among effects of cards ("choose which effect to resolve", or one "you may" effect with
+ * Pass): the effects queue beside End turn, one picked at a time. Its other choices (Pass...) are
+ * buttons of the queue.
+ */
+export function effectQueue(d: Decision | null): { effects: ChoiceOption[]; others: ChoiceOption[] } | null {
+  if (!d || d.kind !== 'choice') return null;
+  const effects = d.choices.filter((c) => c.sourceCardId !== undefined);
+  if (!effects.length) return null;
+  return { effects, others: d.choices.filter((c) => c.sourceCardId === undefined) };
+}
+
 /** Cards of a select decision that are not drawn on the table: they are shown in a picker. */
 export function pickerCardIds(view: GameView, d: SelectDecision): number[] {
   if (d.showInPicker) return d.cardIds;

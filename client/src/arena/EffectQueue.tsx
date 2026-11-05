@@ -1,0 +1,123 @@
+import { useEffect, useState } from 'react';
+import type { CardView, ChoiceOption } from '@protocol';
+import { artUrl } from '../api/catalog';
+import { useGameCtx } from '../game/GameContext';
+import { effectQueue } from '../game/decisions';
+import { RichText } from '../components/RichText';
+
+const WHERE: Partial<Record<string, string>> = {
+  hero: 'Hero',
+  heroExpedition: 'Hero expedition',
+  companionExpedition: 'Companion expedition',
+  landmark: 'Landmark',
+  reserve: 'Reserve',
+  hand: 'Hand',
+  limbo: 'Being played',
+};
+
+const where = (c: CardView | undefined) => (c && typeof c.zone === 'string' ? (WHERE[c.zone] ?? '') : '');
+
+/** The label of a choice without its source's name in parentheses: the queue shows the card itself */
+const effectText = (c: ChoiceOption) => c.label.replace(/\s*\(\[\[[^\]]+\]\]\)\s*$/, '');
+
+/**
+ * Effects that triggered together, beside End turn: one portrait per effect, the effect under the
+ * pointer told above them and its card lit on the board. A click resolves that effect; the next
+ * decision brings the effects left. `collapsed`: the hand is looked at, the queue shrinks into a
+ * badge above End turn (a click on it brings the queue back).
+ */
+export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExpand: () => void }) {
+  const { decision, byId, def, send, sending, setFocusSource, inspectCard } = useGameCtx();
+  const d = decision;
+  const q = effectQueue(decision);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [picked, setPicked] = useState<number | null>(null);
+  const decisionId = decision?.id;
+  useEffect(() => {
+    setHovered(null);
+    setPicked(null);
+  }, [decisionId]);
+
+  const focus = q ? (q.effects.find((c) => c.id === hovered) ?? q.effects.find((c) => c.enabled) ?? q.effects[0]) : null;
+  const focusCard = focus?.sourceCardId ?? null;
+  useEffect(() => {
+    setFocusSource(focusCard);
+    return () => setFocusSource(null);
+  }, [focusCard, setFocusSource]);
+
+  if (!q || !focus) return null;
+  const card = (c: ChoiceOption) => byId.get(c.sourceCardId!);
+  const focusDef = def(card(focus));
+  const n = q.effects.length;
+  const resolve = (c: ChoiceOption) => {
+    if (!c.enabled || sending) return;
+    setPicked(c.id);
+    void send({ type: 'choice', id: c.id });
+  };
+
+  return (
+    <>
+      <div className={`effect-queue ${collapsed ? 'collapsed' : ''}`} aria-hidden={collapsed}>
+        <div className="eq-detail" aria-live="polite">
+          <div className="eq-detail-head">
+            <span className="eq-name">{focusDef?.name ?? 'Effect'}</span>
+            <span className="eq-where">{where(card(focus))}</span>
+          </div>
+          <RichText text={effectText(focus)} />
+        </div>
+        <section className="eq-list" aria-label="Triggered effects">
+          <div className="eq-head">
+            <span>
+              <b>{n === 1 ? '1 effect' : `${n} effects`}</b> · {n === 1 ? 'click to resolve it' : 'click one to resolve it'}
+            </span>
+            {q.others.map((c) => (
+              <button key={c.id} type="button" className="eq-other" disabled={!c.enabled || sending} onClick={() => void send({ type: 'choice', id: c.id })}>
+                <RichText text={c.label} />
+              </button>
+            ))}
+            {d?.canPass && (
+              <button type="button" className="eq-other" disabled={sending} onClick={() => void send({ type: 'pass' })}>
+                {d.passLabel ?? 'Pass'}
+              </button>
+            )}
+            {d?.canUndo && (
+              <button type="button" className="eq-other ghost" disabled={sending} onClick={() => void send({ type: 'undo' })}>
+                Undo
+              </button>
+            )}
+          </div>
+          <div className="eq-items">
+            {q.effects.map((c) => {
+              const cd = def(card(c));
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`eq-item ${c.id === focus.id ? 'on' : ''} ${picked === c.id ? 'resolving' : ''}`}
+                  disabled={!c.enabled || sending}
+                  onMouseEnter={() => setHovered(c.id)}
+                  onFocus={() => setHovered(c.id)}
+                  onClick={() => resolve(c)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    inspectCard(c.sourceCardId!);
+                  }}
+                  title={cd ? `${cd.name}: ${effectText(c)}` : effectText(c)}
+                  aria-label={`Resolve ${cd?.name ?? 'this effect'}: ${effectText(c)}`}
+                >
+                  {cd ? <img src={artUrl(cd)} alt="" draggable={false} /> : <span className="eq-noart">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+      {collapsed && (
+        <button type="button" className="eq-badge" onClick={onExpand} title="Effects to resolve" aria-label={`Show the ${n} effects to resolve`}>
+          {focusDef ? <img src={artUrl(focusDef)} alt="" draggable={false} /> : null}
+          <span>{n}</span>
+        </button>
+      )}
+    </>
+  );
+}

@@ -1,5 +1,5 @@
 import { useGameCtx } from '../game/GameContext';
-import { confirmAnswer, primaryAction } from '../game/decisions';
+import { confirmAnswer, effectQueue, primaryAction } from '../game/decisions';
 
 /**
  * The pill in the bottom-right corner, by the hand: the main action of the current decision (end
@@ -19,6 +19,14 @@ export function TrackButton() {
       </button>
     );
   }
+  // Effects to resolve: they are picked in the effects queue
+  if (effectQueue(decision))
+    return (
+      <button type="button" className="track-btn" disabled>
+        <span className="tb-small">Effects</span>
+        <span className="tb-label">Pick one</span>
+      </button>
+    );
   const p = primaryAction(decision);
   let label = 'Choose';
   let run: (() => void) | null = null;

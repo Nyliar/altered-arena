@@ -18,7 +18,7 @@ type Fx = { key: number; text: string; up: boolean };
  * losses pop a short "+1" above the card.
  */
 export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: 'exp' | 'zone' | 'hero' }) {
-  const { byId, def, aff, ui, send } = useGameCtx();
+  const { byId, def, aff, ui, send, focusSource } = useGameCtx();
   const { drag } = useDrag();
   const { draggable, handlers } = useCardPointer(id);
   const card = byId.get(id);
@@ -38,6 +38,7 @@ export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: '
     a?.selectable ? 'is-selectable' : '',
     a?.picked ? 'is-picked' : '',
     a?.source ? 'is-source' : '',
+    focusSource === id ? 'is-trigger-focus' : '',
     ui.selected === id ? 'is-selected' : '',
     drag?.cardId === id ? 'is-dragged' : '',
     card?.exhausted ? 'is-exhausted' : '',

@@ -805,13 +805,13 @@ body:has(.marker-ghost) { cursor: grabbing; }
 /* The prompt: DecisionBar restyled */
 .prompt {
   position: absolute;
-  left: calc(50% + 24px);
-  top: 8px;
-  translate: -50% 0;
-  width: 560px;
+  right: calc(100% + 64px);
+  /* Above the top edge of the hand, which may hold the cards to pick */
+  bottom: calc(var(--card-hand-w) * 0.78 - 12px);
+  width: 440px;
   z-index: 20;
 }
-.layout-phone .prompt { left: 50%; width: 330px; top: auto; bottom: 62px; }
+.layout-phone .prompt { right: 0; bottom: calc(100% + 12px); width: 330px; }
 .prompt .decision-bar {
   background: rgb(10 14 34 / 0.88);
   border: 2px solid var(--cyan);
@@ -1235,3 +1235,113 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
   font: 700 16px / 1 var(--font-title);
   letter-spacing: 0;
 }
+
+/* Effects that triggered together: a queue of portraits left of End turn, one resolved per click */
+.effect-queue {
+  position: absolute;
+  /* Left of the dock, clear of the landmarks above End turn */
+  right: calc(100% + 64px);
+  bottom: 0;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 17;
+  /* Shrinks toward the badge above End turn */
+  transform-origin: calc(100% + 64px + var(--marker-size) * 2) calc(100% + 34px);
+  transition: transform 0.18s ease-in-out, opacity 0.18s ease-in-out;
+}
+.effect-queue.collapsed { transform: scale(0.06); opacity: 0; pointer-events: none; }
+.eq-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px 10px;
+  border: 1px solid rgb(255 210 122 / 0.6);
+  border-radius: 12px;
+  background: rgb(12 22 48 / 0.94);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #e8ecff;
+}
+.eq-detail-head { display: flex; align-items: baseline; gap: 8px; }
+.eq-name { font: 700 15px / 1.1 var(--font-title); letter-spacing: 0.04em; text-transform: uppercase; color: #ffd27a; }
+.eq-where { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #a9a3d6; }
+.eq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 10px 10px;
+  border: 1px solid rgb(217 180 106 / 0.75);
+  border-radius: 14px;
+  background: rgb(12 14 32 / 0.93);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);
+}
+.eq-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffe6a8; }
+.eq-head > span { flex: 1; }
+.eq-head b { font: 700 13px / 1 var(--font-title); letter-spacing: 0.06em; text-transform: uppercase; }
+.eq-other.ghost { border-color: rgb(201 195 239 / 0.4); color: #c9c3ef; background: transparent; }
+.eq-other { padding: 3px 10px; border: 1px solid rgb(217 180 106 / 0.7); border-radius: 999px; background: rgb(255 255 255 / 0.06); color: #ffe6a8; font-size: 12px; }
+.eq-items { display: flex; flex-wrap: wrap; gap: 8px; }
+.eq-item {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid rgb(217 180 106 / 0.45);
+  border-radius: 50%;
+  background: #15173a;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.eq-item img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; border-radius: 50%; display: block; }
+.eq-item.on { border-color: #ffd27a; box-shadow: 0 0 0 2px rgb(20 16 50 / 0.6), 0 0 14px rgb(255 210 122 / 0.7); transform: scale(1.12); }
+.eq-item:disabled { cursor: default; }
+.eq-item:disabled:not(.resolving) { filter: grayscale(0.7) brightness(0.6); }
+.eq-item.resolving::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 3px dashed #ffd27a; animation: eq-spin 1.2s linear infinite; }
+@keyframes eq-spin { to { rotate: 360deg; } }
+.eq-noart { display: grid; place-items: center; width: 100%; height: 100%; color: #ffe6a8; }
+.eq-badge {
+  position: absolute;
+  right: calc(var(--marker-size) * 2 - 24px);
+  bottom: calc(100% + 10px);
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid #ffd27a;
+  border-radius: 50%;
+  background: #15173a;
+  box-shadow: 0 0 0 3px rgb(20 16 50 / 0.6), 0 0 16px rgb(255 210 122 / 0.55);
+  z-index: 18;
+  animation: eq-badge-in 0.18s ease-out 0.08s both;
+}
+.eq-badge img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; border-radius: 50%; display: block; }
+.eq-badge span {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: #ffd27a;
+  color: #1a1430;
+  font: 700 13px / 22px var(--font-title);
+  text-align: center;
+}
+@keyframes eq-badge-in { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
+
+/* The card of the effect pointed at in the queue: lifted, gold frame, a pulse */
+.mc.is-trigger-focus { z-index: 30; translate: 0 -6%; scale: 1.07; border-color: #ffd27a; animation: trigger-pulse 1.3s ease-out infinite; }
+.board-card.is-trigger-focus .card { animation: trigger-pulse 1.3s ease-out infinite; }
+@keyframes trigger-pulse {
+  0% { box-shadow: 0 0 0 3px #ffd27a, 0 0 0 3px rgb(255 210 122 / 0.9), 0 0 22px rgb(255 210 122 / 0.6), 0 14px 28px rgb(0 0 0 / 0.55); }
+  100% { box-shadow: 0 0 0 3px #ffd27a, 0 0 0 20px rgb(255 210 122 / 0), 0 0 22px rgb(255 210 122 / 0.6), 0 14px 28px rgb(0 0 0 / 0.55); }
+}
+
+/* Effects to resolve: the hand is not playable, lowered to its top edge until pointed at */
+.arena-hand.inactive .ah-slot { filter: brightness(0.8); }
+.arena-hand.retracted .ah-slot { bottom: calc(var(--card-hand-w) * -1.15); }
+/* A hand card pointed at rises above the prompt of the dock */
+.arena-hand:has(.ah-slot:hover) { z-index: 17; }

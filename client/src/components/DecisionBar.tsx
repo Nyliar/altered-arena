@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Decision, TurnDecision } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
-import { choiceKey, cleanupCounts, confirmAnswer, exchangePicks, pickerCardIds, primaryAction, type PrimaryAction } from '../game/decisions';
+import { choiceKey, cleanupCounts, confirmAnswer, effectQueue, exchangePicks, pickerCardIds, primaryAction, type PrimaryAction } from '../game/decisions';
 import { RichText } from './RichText';
 import { DeckGrid, SelectPicker } from './Picker';
 import { Modal } from './Modal';
@@ -310,8 +310,14 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   }, [decisionId]);
 
   if (view.phase === 'ended') return null;
-  // Nothing to decide: no bar (the track button says whose turn it is)
-  if (!decision) return null;
+  // Nothing to decide: no bar (the track button says whose turn it is). Effects to resolve: the
+  // effects queue beside End turn
+  if (!decision || effectQueue(decision)) return null;
+  // My turn with nothing to click here (End turn is on its own button): the glowing cards say it all
+  if (primaryOnTrack && decision.kind === 'turn' && !auto?.countdown) {
+    const hide = primaryAction(decision)?.kind;
+    if (!decision.canUndo && !(decision.canPass && hide !== 'pass') && !(decision.canEndTurn && hide !== 'endTurn')) return null;
+  }
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click
