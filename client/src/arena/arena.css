@@ -817,7 +817,6 @@ body:has(.marker-ghost) { cursor: grabbing; }
    at the bottom of End turn (.end-dock) */
 .center-dock { position: absolute; left: 0; right: 0; bottom: 22px; height: 0; z-index: 16; }
 .layout-phone .center-dock { bottom: 34px; }
-.layout-phone .eq-badge { right: calc(8px + var(--marker-size) * 2 - 24px); }
 
 /* The prompt: DecisionBar restyled */
 .prompt {
@@ -1319,6 +1318,21 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 }
 .eq-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffe6a8; }
 .eq-head > span { flex: 1; }
+/* Minimizes the queue into its badge, the hand comes up */
+.eq-min {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgb(201 195 239 / 0.4);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.06);
+  color: #c9c3ef;
+  display: grid;
+  place-items: center;
+}
+.eq-min svg { width: 14px; height: 14px; }
+.eq-min:hover { color: #ffe6a8; border-color: rgb(217 180 106 / 0.7); }
 .eq-head b { font: 700 13px / 1 var(--font-title); letter-spacing: 0.06em; text-transform: uppercase; }
 .eq-other.ghost { border-color: rgb(201 195 239 / 0.4); color: #c9c3ef; background: transparent; }
 .eq-other { padding: 3px 10px; border: 1px solid rgb(217 180 106 / 0.7); border-radius: 999px; background: rgb(255 255 255 / 0.06); color: #ffe6a8; font-size: 12px; }
@@ -1340,13 +1354,12 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 .eq-item.resolving::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 3px dashed #ffd27a; animation: eq-spin 1.2s linear infinite; }
 @keyframes eq-spin { to { rotate: 360deg; } }
 .eq-noart { display: grid; place-items: center; width: 100%; height: 100%; color: #ffe6a8; }
+/* The queue minimized: a round button right of the main one, in .end-dock */
 .eq-badge {
-  position: absolute;
-  /* Above End turn (.end-dock: 22px from the right, End turn as tall as the dock) */
-  right: calc(22px + var(--marker-size) * 2 - 24px);
-  bottom: calc(var(--marker-size) * 1.45 + 10px);
-  width: 48px;
-  height: 48px;
+  position: relative;
+  flex: none;
+  width: calc(var(--marker-size) * 1.05);
+  height: calc(var(--marker-size) * 1.05);
   padding: 0;
   border: 2px solid #ffd27a;
   border-radius: 50%;
@@ -1383,6 +1396,9 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 /* Effects to resolve: the hand is not playable, lowered to its top edge until pointed at */
 .arena-hand.inactive .ah-slot { filter: brightness(0.8); }
 .arena-hand.retracted .ah-slot { bottom: calc(var(--card-hand-w) * -1.15); }
+/* Retracted under the effects queue: no card comes up under the pointer (the queue's minimize
+   button brings the hand up) */
+.arena-hand.retracted .ah-slot { pointer-events: none; }
 /* A hand card pointed at rises above the prompt of the dock */
 .arena-hand:has(.ah-slot:hover) { z-index: 17; }
 

@@ -26,10 +26,11 @@ const triggeredBy = (c: ChoiceOption) => (c.resolvesTo ? (/\[\[([^\]]+)\]\]/.exe
 /**
  * Effects that triggered together, beside End turn: one portrait per effect, the effect under the
  * pointer told above them and its card lit on the board. A click resolves that effect; the next
- * decision brings the effects left. `collapsed`: the hand is looked at, the queue shrinks into a
- * badge above End turn (a click on it brings the queue back).
+ * decision brings the effects left. Its minimize button (`onCollapse`) shrinks it into a badge
+ * right of the main button (EffectQueueBadge, a click on it brings the queue back), the hand
+ * comes up to be looked at.
  */
-export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExpand: () => void }) {
+export function EffectQueue({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: () => void }) {
   const { decision, byId, def, send, sending, setFocusSource, inspectCard, setResolveIntent } = useGameCtx();
   const d = decision;
   const q = effectQueue(decision);
@@ -92,6 +93,11 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
                 {d.passLabel ?? 'Pass'}
               </button>
             )}
+            <button type="button" className="eq-min" onClick={onCollapse} aria-label="Minimize the effects and show my hand" title="Show my hand">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
           </div>
           <div className="eq-items">
             {q.effects.map((c) => {
@@ -118,12 +124,22 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
           </div>
         </section>
       </div>
-      {collapsed && (
-        <button type="button" className="eq-badge" onClick={onExpand} aria-label={`Show the ${n} effects to resolve`}>
-          {focusDef ? <img src={artUrl(focusDef)} alt="" draggable={false} /> : null}
-          <span>{n}</span>
-        </button>
-      )}
     </>
+  );
+}
+
+/** The effects queue minimized: a badge right of the main button, a click brings the queue back */
+export function EffectQueueBadge({ onExpand }: { onExpand: () => void }) {
+  const { decision, byId, def } = useGameCtx();
+  const q = effectQueue(decision);
+  if (!q) return null;
+  const first = q.effects.find((c) => c.enabled) ?? q.effects[0];
+  const firstDef = first?.sourceCardId !== undefined ? def(byId.get(first.sourceCardId)) : null;
+  const n = q.effects.length;
+  return (
+    <button type="button" className="eq-badge" onClick={onExpand} aria-label={`Show the ${n} effects to resolve`} title="Show the effects">
+      {firstDef ? <img src={artUrl(firstDef)} alt="" draggable={false} /> : null}
+      <span>{n}</span>
+    </button>
   );
 }

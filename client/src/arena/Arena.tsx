@@ -11,7 +11,7 @@ import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
 import { CardActions } from './CardActions';
 import { TrackButton } from './TrackButton';
-import { EffectQueue } from './EffectQueue';
+import { EffectQueue, EffectQueueBadge } from './EffectQueue';
 import { effectQueue } from '../game/decisions';
 import { MarkerGhost } from './TerrainMarkers';
 import './arena.css';
@@ -40,27 +40,14 @@ export function Arena({
   const { view, me, opp, log, you, catalog, decision } = useGameCtx();
   // Undo: against bots, the server takes back my last move (the engine's undo is not offered)
   const undoBtn = undo;
-  // Effects to resolve: the hand is not playable, it retracts; pointed at, it comes up and the
-  // effects queue shrinks into a badge (back a moment after the pointer leaves the hand)
+  // Effects to resolve: the hand is not playable, it retracts. The queue's minimize button shrinks
+  // it into a badge right of the main button and brings the hand up; the badge brings the queue
+  // back. Minimized, it stays so through the next effects, until there are none left.
   const queueOn = !!effectQueue(decision);
-  const [peek, setPeek] = useState(false);
-  const peekTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [minimized, setMinimized] = useState(false);
   useEffect(() => {
-    if (!queueOn) setPeek(false);
+    if (!queueOn) setMinimized(false);
   }, [queueOn]);
-  useEffect(() => () => clearTimeout(peekTimer.current), []);
-  const handEnter = () => {
-    clearTimeout(peekTimer.current);
-    if (queueOn) setPeek(true);
-  };
-  const handLeave = () => {
-    clearTimeout(peekTimer.current);
-    peekTimer.current = setTimeout(() => setPeek(false), 150);
-  };
-  const expandQueue = () => {
-    clearTimeout(peekTimer.current);
-    setPeek(false);
-  };
   const { layout: l, scale, portrait } = useArenaLayout();
   // Order of my hand, remembered on this device
   const [handSort, setHandSort] = useState<HandSort>(() => {
@@ -165,10 +152,8 @@ export function Arena({
         {opp && <OppHand player={opp} />}
         <InfoChip onLeave={onLeave} connected={connected} onLog={() => setLogOpen((o) => !o)} unread={unread} />
         <ArenaHand
-          retracted={queueOn && !peek}
+          retracted={queueOn && !minimized}
           inactive={queueOn}
-          onEnter={handEnter}
-          onLeave={handLeave}
           sort={handSort}
           leftBound={meDockRight}
           stageW={l.W}
@@ -177,7 +162,7 @@ export function Arena({
         {/* Every decision is taken at the bottom of the screen, centered above the hand */}
         <div className="center-dock">
           <Prompt />
-          <EffectQueue collapsed={peek} onExpand={expandQueue} />
+          <EffectQueue collapsed={minimized} onCollapse={() => setMinimized(true)} />
         </div>
         <div className="end-dock">
           {undoBtn && (
@@ -194,6 +179,7 @@ export function Arena({
             </span>
           )}
           <TrackButton />
+          {queueOn && minimized && <EffectQueueBadge onExpand={() => setMinimized(false)} />}
         </div>
         <TrackNotice at={trackAt} />
         <PhaseBanner />
