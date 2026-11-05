@@ -313,11 +313,8 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   // Nothing to decide: no bar (the track button says whose turn it is). Effects to resolve: the
   // effects queue beside End turn
   if (!decision || effectQueue(decision)) return null;
-  // My turn with nothing to click here (End turn is on its own button): the glowing cards say it all
-  if (primaryOnTrack && decision.kind === 'turn' && !auto?.countdown) {
-    const hide = primaryAction(decision)?.kind;
-    if (!decision.canUndo && !(decision.canPass && hide !== 'pass') && !(decision.canEndTurn && hide !== 'endTurn')) return null;
-  }
+  // My turn: the glowing cards say it, End turn and Undo have their own buttons beside the hand
+  if (primaryOnTrack && decision.kind === 'turn') return null;
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click

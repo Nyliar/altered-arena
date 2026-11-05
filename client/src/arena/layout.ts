@@ -38,7 +38,7 @@ const WIDE: ArenaLayout = {
     '--mana-slot-h': '14px',
     '--mana-gap': '4px',
     '--opp-card-w': '96px',
-    '--opp-hand-x': '300px',
+    '--opp-hand-x': '50%',
   },
 };
 

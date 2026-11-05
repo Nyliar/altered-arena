@@ -36,7 +36,11 @@ export function Arena({
   /** Against bots: takes back the player's last move (a round button beside the main one) */
   undo?: { onUndo: () => void; disabled: boolean };
 }) {
-  const { view, me, opp, log, you, catalog, decision } = useGameCtx();
+  const { view, me, opp, log, you, catalog, decision, send, sending } = useGameCtx();
+  // Undo: within my turn, the engine takes back the choices since the last irreversible step; else,
+  // against bots, the server takes back my last move
+  const turnUndo = decision?.kind === 'turn' && decision.canUndo ? { onUndo: () => void send({ type: 'undo' }), disabled: sending } : undefined;
+  const undoBtn = turnUndo ?? undo;
   // Effects to resolve: the hand is not playable, it retracts; pointed at, it comes up and the
   // effects queue shrinks into a badge (back a moment after the pointer leaves the hand)
   const queueOn = !!effectQueue(decision);
@@ -127,9 +131,9 @@ export function Arena({
           {/* Every decision is taken at the bottom of the screen, beside End turn */}
           <Prompt />
           <EffectQueue collapsed={peek} onExpand={expandQueue} />
-          {undo && (
+          {undoBtn && (
             <span className="undo-dock">
-              <button type="button" className="undo-btn" disabled={undo.disabled} onClick={undo.onUndo} title="Take back your last move" aria-label="Undo your last move">
+              <button type="button" className="undo-btn" disabled={undoBtn.disabled} onClick={undoBtn.onUndo} title="Take back your last move" aria-label="Undo your last move">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 14 4 9l5-5" />
                   <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
