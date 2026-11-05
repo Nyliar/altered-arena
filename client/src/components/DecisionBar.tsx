@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type { Decision, TurnDecision } from '@protocol';
+import type { Decision, GameView, TurnDecision } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { choiceKey, cleanupCounts, confirmAnswer, effectQueue, exchangePicks, pickerCardIds, primaryAction, type PrimaryAction } from '../game/decisions';
 import { RichText } from './RichText';
@@ -298,10 +298,32 @@ function pickedOnBoard(d: Decision): boolean {
 }
 
 /**
+ * The bar has nothing to click: the prompt only tells what to do (the cards are picked on the
+ * board or in the hand, the main action is on the track button). An information, not a trigger.
+ */
+function infoOnly(view: GameView, d: Decision, hide: PrimaryAction['kind'] | undefined): boolean {
+  if (d.canPass && hide !== 'pass') return false;
+  switch (d.kind) {
+    case 'cleanup':
+    case 'exchange':
+    case 'confirm':
+      return hide === 'confirm';
+    case 'select':
+      return hide === 'confirm' && !pickerCardIds(view, d).length;
+    case 'buttons':
+      return !!d.markRegion || hide === 'button';
+    default:
+      return false;
+  }
+}
+
+/**
  * The prompt of the current decision and its controls; a waiting indicator otherwise.
  * primaryOnTrack: the main action (end turn, confirm, pass) is on another button, not here.
+ * only: show the bar only when it is an information (nothing to click in it) or only when it holds
+ * controls; the arena draws the first on the track, the second above the hand.
  */
-export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack?: boolean; before?: ReactNode }) {
+export function DecisionBar({ primaryOnTrack = false, before, only }: { primaryOnTrack?: boolean; before?: ReactNode; only?: 'info' | 'controls' }) {
   const { view, decision, byId, def, sending, inspectCard, auto } = useGameCtx();
   const [flash, setFlash] = useState(false);
   const decisionId = decision?.id;
@@ -322,12 +344,15 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   if (primaryOnTrack && pickedOnBoard(decision) && !(decision.canPass && primaryAction(decision)?.kind !== 'pass')) return null;
   // Cards from hand to mana: the glowing hand says it, Confirm and Pass are on the track button
   if (primaryOnTrack && decision.kind === 'select' && decision.toMana && !pickerCardIds(view, decision).length) return null;
+  const hide = primaryOnTrack ? primaryAction(decision)?.kind : undefined;
+  const info = (!!auto && !auto.countdown) || (primaryOnTrack && infoOnly(view, decision, hide));
+  if (only && (only === 'info') !== info) return null;
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click
   if (auto && !auto.countdown)
     return (
-      <div className="decision-bar waiting" aria-live="polite">
+      <div className="decision-bar waiting info" aria-live="polite">
         <span className="spinner" />
         {sourceDef && <b>{sourceDef.name}</b>}
         <RichText text={decision.prompt} />
@@ -348,7 +373,7 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
       </div>
       {!(primaryOnTrack && primaryAction(decision)?.kind === 'button' && !decision.canPass) && (
         <div className="db-controls">
-          <Controls d={decision} hide={primaryOnTrack ? primaryAction(decision)?.kind : undefined} />
+          <Controls d={decision} hide={hide} />
         </div>
       )}
     </div>

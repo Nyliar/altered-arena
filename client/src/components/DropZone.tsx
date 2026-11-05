@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Destination } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { useDrag } from '../game/drag';
@@ -18,11 +18,13 @@ export function DropZone({
   className,
   children,
   label,
+  style,
 }: {
   destination: Destination;
   className?: string;
   children?: ReactNode;
   label?: string;
+  style?: CSSProperties;
 }) {
   const { play } = useGameCtx();
   const { cardId, destinations, over } = useOfferedDestinations();
@@ -32,6 +34,7 @@ export function DropZone({
       data-drop={valid ? destination : undefined}
       className={`drop-zone ${className ?? ''} ${valid ? 'drop-valid' : ''} ${over === destination ? 'drop-over' : ''}`}
       onClick={valid && cardId !== null ? () => play(cardId, destination) : undefined}
+      style={style}
     >
       {children}
       {valid && label && <span className="drop-label">{label}</span>}

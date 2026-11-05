@@ -87,7 +87,7 @@ function Piles({ player }: { player: PlayerView }) {
   );
 }
 
-function ZoneSlots({ player, zone, mine }: { player: PlayerView; zone: 'reserve' | 'landmark'; mine: boolean }) {
+function ZoneSlots({ player, zone, mine, place }: { player: PlayerView; zone: 'reserve' | 'landmark'; mine: boolean; place: ZonePlace }) {
   const { zoneCards } = useGameCtx();
   const cards = zoneCards(player.id, zone);
   const slots = zone === 'reserve' ? player.reserveSlots : player.landmarkSlots;
@@ -97,7 +97,7 @@ function ZoneSlots({ player, zone, mine }: { player: PlayerView; zone: 'reserve'
       <span className="zone-label">
         {zone === 'reserve' ? 'Reserve' : 'Landmarks'} {cards.length}/{slots}
       </span>
-      <div className="zone-cards">
+      <div className={`zone-cards ${place.step !== undefined ? 'packed' : ''}`} style={place.step !== undefined ? ({ ['--zone-step' as string]: `${place.step}px` } as CSSProperties) : undefined}>
         {cards.map((c) => (
           <MatCard key={c.id} id={c.id} kind="zone" />
         ))}
@@ -110,23 +110,57 @@ function ZoneSlots({ player, zone, mine }: { player: PlayerView; zone: 'reserve'
   );
   const cls = `zone-group zone-${zone} ${pickLocation ? 'selectable' : ''}`;
   return mine ? (
-    <DropZone destination={zone} className={cls} label={zone === 'reserve' ? 'Reserve' : 'Landmarks'}>
+    <DropZone destination={zone} className={cls} label={zone === 'reserve' ? 'Reserve' : 'Landmarks'} style={place.style}>
       {body}
     </DropZone>
   ) : (
-    <div className={cls}>{body}</div>
+    <div className={cls} style={place.style}>
+      {body}
+    </div>
   );
 }
 
+/** Where a zone group is (left edge of the Reserve, right edge of the Landmarks) and, when its cards overlap, their step */
+type ZonePlace = { style: CSSProperties; step?: number };
+
+const ZONE_GAP = 8;
+/** Reserve from 25% of the mat width, Landmarks up to 13% from its right edge (24% for the opponent on phones, clear of the info chip) */
+const RESERVE_LEFT = 0.25;
+const landmarkRight = (l: ArenaLayout, row: 0 | 4) => (l.mode === 'phone' && row === 0 ? 0.24 : 0.13);
+
+/**
+ * Reserve and Landmarks share the row between the piles and the right edge. When their cards do
+ * not fit side by side (ten in each, rare but possible), each group gets a width in proportion to
+ * its cards and they overlap to fit in it.
+ */
+function zonePlaces(l: ArenaLayout, row: 0 | 4, nReserve: number, nLandmarks: number): [ZonePlace, ZonePlace] {
+  const right = landmarkRight(l, row);
+  const reserve: ZonePlace = { style: { left: `${RESERVE_LEFT * 100}%` } };
+  const landmarks: ZonePlace = { style: { right: `${right * 100}%` } };
+  const cw = parseFloat(l.vars['--zone-card-w']);
+  // Padding of both groups (4px each side) and a margin between them
+  const avail = (1 - RESERVE_LEFT - right) * l.plane.w - 16 - 3 * ZONE_GAP;
+  const width = (n: number) => n * cw + Math.max(0, n - 1) * ZONE_GAP;
+  if (width(nReserve) + width(nLandmarks) <= avail) return [reserve, landmarks];
+  const step = (n: number) => (n > 1 ? Math.min(cw + ZONE_GAP, (avail * (n / (nReserve + nLandmarks)) - cw) / (n - 1)) : undefined);
+  return [
+    { ...reserve, step: step(nReserve) },
+    { ...landmarks, step: step(nLandmarks) },
+  ];
+}
+
 function MatZone({ l, row, player, mine }: { l: ArenaLayout; row: 0 | 4; player: PlayerView | undefined; mine: boolean }) {
+  const { zoneCards } = useGameCtx();
+  const n = (zone: 'reserve' | 'landmark', slots: number) => (player ? Math.max(zoneCards(player.id, zone).length, slots) : 0);
+  const [reserve, landmarks] = zonePlaces(l, row, n('reserve', player?.reserveSlots ?? 0), n('landmark', player?.landmarkSlots ?? 0));
   return (
     <div className={`mat-row mat-zone ${row === 0 ? 'zone-top' : 'zone-bottom'}`} style={rowBackground(l, row)}>
       <div className="mat-patch" style={deckPatch(l, row)} />
       {player && (
         <>
           <Piles player={player} />
-          <ZoneSlots player={player} zone="reserve" mine={mine} />
-          <ZoneSlots player={player} zone="landmark" mine={mine} />
+          <ZoneSlots player={player} zone="reserve" mine={mine} place={reserve} />
+          <ZoneSlots player={player} zone="landmark" mine={mine} place={landmarks} />
         </>
       )}
     </div>

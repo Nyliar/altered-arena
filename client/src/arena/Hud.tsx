@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { CardView, Phase, PlayerView } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { BoardCard } from '../components/BoardCard';
@@ -21,10 +21,20 @@ export const phaseLabel = (p: Phase) =>
  * expeditions, one slot per Mana Orb, lit when it is ready. Anchor of the cards put in mana; a
  * click lists them.
  */
+/** Orbs the mana gauge draws at full size; beyond, they get thinner to keep its height */
+const MANA_ROWS = 8;
+/** Orbs in one column at their thinnest (thin bars); beyond, more columns */
+const MANA_THIN_ROWS = 24;
+
 export function ManaBar({ player, mine }: { player: PlayerView; mine: boolean }) {
   const { zoneCards } = useGameCtx();
   const [open, setOpen] = useState(false);
   const mana = zoneCards(player.id, 'mana');
+  // Beyond MANA_ROWS orbs the gauge would leave its band: the orbs become thin bars in the same
+  // height, then, past MANA_THIN_ROWS, they go on in more columns (as even as possible)
+  const cols = Math.max(1, Math.ceil(player.manaTotal / MANA_THIN_ROWS));
+  const rows = Math.max(1, Math.ceil(player.manaTotal / cols));
+  const thin = rows > MANA_ROWS;
   return (
     <>
       <button
@@ -39,10 +49,16 @@ export function ManaBar({ player, mine }: { player: PlayerView; mine: boolean })
           {player.manaAvailable}
           <small>/{player.manaTotal}</small>
         </b>
-        <span className="mb-gauge">
-          {Array.from({ length: player.manaTotal }, (_, i) => (
-            <span key={i} className={`mb-slot ${i < player.manaAvailable ? 'on' : ''}`} />
-          ))}
+        <span
+          className={`mb-gauge ${cols > 1 ? 'multi' : ''} ${thin ? 'thin' : ''}`}
+          style={thin ? ({ ['--mb-rows' as string]: rows, ['--mb-full' as string]: MANA_ROWS } as CSSProperties) : undefined}
+        >
+          {Array.from({ length: player.manaTotal }, (_, i) => {
+            // Filled column by column, from the mat's edge (bottom for me, top for the opponent)
+            const r = i % rows;
+            const at = { gridColumn: Math.floor(i / rows) + 1, gridRow: mine ? rows - r : r + 1 };
+            return <span key={i} className={`mb-slot ${i < player.manaAvailable ? 'on' : ''}`} style={at} />;
+          })}
         </span>
       </button>
       {open && <CardListModal title={`${player.name}: mana`} cardIds={mana.map((c) => c.id)} onClose={() => setOpen(false)} />}
@@ -100,7 +116,21 @@ export function InfoChip({ onLeave, connected, onLog, unread, extra }: { onLeave
 export function Prompt() {
   return (
     <div className="prompt">
-      <DecisionBar primaryOnTrack />
+      <DecisionBar primaryOnTrack only="controls" />
+    </div>
+  );
+}
+
+/**
+ * A prompt with nothing to click in it (discard down to 2 in Reserve, pick cards on the board...):
+ * on the middle of the Tumult track, clear of the hand and of the zones where the cards are picked.
+ * `at`: centre of the track on the stage.
+ */
+export function TrackNotice({ at }: { at: { x: number; y: number } | null }) {
+  if (!at) return null;
+  return (
+    <div className="track-notice" style={{ left: at.x, top: at.y }}>
+      <DecisionBar primaryOnTrack only="info" />
     </div>
   );
 }

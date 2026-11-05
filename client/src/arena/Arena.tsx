@@ -4,7 +4,7 @@ import { Log } from '../components/Log';
 import { EndScreen } from '../components/EndScreen';
 import { useArenaLayout } from './layout';
 import { Mat } from './Mat';
-import { ArenaHand, HandSortButton, InfoChip, isHandSort, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHint, type HandSort } from './Hud';
+import { ArenaHand, HandSortButton, InfoChip, isHandSort, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHint, TrackNotice, type HandSort } from './Hud';
 import { saveHandSort, savedHandSort } from '../screens/storage';
 import { fly, snapshot, type Snapshot } from './flights';
 import { launchReveal, REVEAL_MS } from './reveals';
@@ -123,6 +123,18 @@ export function Arena({
     return () => cancelAnimationFrame(id);
   }, [l, scale]);
 
+  // Centre of the Tumult track on the stage (the mat is tilted: measured), for the information prompts
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [trackAt, setTrackAt] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const track = stage?.querySelector('.track');
+    if (!stage || !track) return;
+    const s = stage.getBoundingClientRect();
+    const t = track.getBoundingClientRect();
+    setTrackAt({ x: (t.left + t.width / 2 - s.left) / scale, y: (t.top + t.height / 2 - s.top) / scale });
+  }, [l, scale]);
+
   const [logOpen, setLogOpen] = useState(false);
   const [seen, setSeen] = useState(0);
   const lastSeq = log.length ? log[log.length - 1].seq : 0;
@@ -134,7 +146,7 @@ export function Arena({
   const stageStyle = { width: l.W, height: l.H, transform: `translate(-50%, -50%) scale(${scale})`, ...l.vars } as CSSProperties;
   return (
     <div className={`arena layout-${l.mode}`} ref={rootRef} style={{ ['--stage-scale' as string]: scale } as CSSProperties}>
-      <div className="arena-stage" style={stageStyle}>
+      <div className="arena-stage" ref={stageRef} style={stageStyle}>
         <div
           className="arena-scene"
           style={{ left: l.plane.left, top: l.plane.top, width: l.plane.w, height: l.plane.h, perspective: `${l.plane.perspective}px` }}
@@ -183,6 +195,7 @@ export function Arena({
           )}
           <TrackButton />
         </div>
+        <TrackNotice at={trackAt} />
         <PhaseBanner />
         {extraTop && <div className="arena-extra">{extraTop}</div>}
       </div>
