@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Phase, PlayerView } from '@protocol';
+import type { CardView, Phase, PlayerView } from '@protocol';
 import { useGameCtx } from '../game/GameContext';
 import { BoardCard } from '../components/BoardCard';
 import { CardListModal } from '../components/Picker';
@@ -129,44 +129,98 @@ export function PhaseBanner() {
   );
 }
 
+/** Order of the cards in my hand: as drawn (oldest on the left), by type, or by cost */
+export type HandSort = 'draw' | 'type' | 'cost';
+const HAND_SORTS: { id: HandSort; label: string; short: string; hint: string }[] = [
+  { id: 'draw', label: 'Draw order', short: 'Draw', hint: 'Oldest left, newest right' },
+  { id: 'type', label: 'Type', short: 'Type', hint: 'Spells, characters, permanents' },
+  { id: 'cost', label: 'Cost', short: 'Cost', hint: 'Cheapest first' },
+];
+export const isHandSort = (s: unknown): s is HandSort => HAND_SORTS.some((o) => o.id === s);
+const TYPE_RANK: Record<string, number> = { spell: 0, character: 1, permanent: 2 };
+
+/** Places in the fan, in card widths from its centre: one step per card, a gap between groups */
+function fanLayout(groups: (string | number)[], spaced: boolean) {
+  const n = groups.length;
+  const step = n > 6 ? 0.62 : 0.8;
+  const xs: number[] = [];
+  groups.forEach((g, i) => xs.push(i === 0 ? 0 : xs[i - 1] + step + (spaced && g !== groups[i - 1] ? 0.22 : 0)));
+  const mid = n ? xs[n - 1] / 2 : 0;
+  return { xs: xs.map((x) => x - mid), offs: xs.map((x) => (x - mid) / step), half: mid, spread: Math.min(6, 30 / Math.max(n, 1)) };
+}
+
 /**
  * My hand, fanned at the bottom; cards rise when hovered or tapped. A card being dragged leaves
- * the fan, which closes up (and opens again if the card comes back).
+ * the fan, which closes up (and opens again if the card comes back). Sorted as the player chose;
+ * a big hand closes up rather than reach the controls on its left (`leftBound`).
  */
 export function ArenaHand({
   retracted = false,
   inactive = false,
   onEnter,
   onLeave,
+  sort = 'draw',
+  leftBound,
+  stageW,
+  cardW,
 }: {
   /** Lowered to its top edge (effects to resolve: the hand is not playable) */
   retracted?: boolean;
   inactive?: boolean;
   onEnter?: () => void;
   onLeave?: () => void;
+  sort?: HandSort;
+  /** Right edge (stage px) of the controls left of the hand, which the fan must not reach */
+  leftBound?: number;
+  stageW?: number;
+  /** Width of a card in the hand (stage px) */
+  cardW?: number;
 }) {
-  const { me, zoneCards, ui, you } = useGameCtx();
+  const { me, zoneCards, ui, you, def } = useGameCtx();
   const { drag } = useDrag();
+  // Draw order: the server lists the hand by card id, so the order of arrival is kept here (the
+  // cards held when the table opens come in the server's order)
+  const arrival = useRef(new Map<number, number>());
+  const arrivals = useRef(0);
   if (!me || you === null) return null;
-  const cards = zoneCards(me.id, 'hand');
+  const held = zoneCards(me.id, 'hand');
+  const ids = new Set(held.map((c) => c.id));
+  for (const id of [...arrival.current.keys()]) if (!ids.has(id)) arrival.current.delete(id);
+  for (const c of held) if (!arrival.current.has(c.id)) arrival.current.set(c.id, arrivals.current++);
+  const drawn = (c: CardView) => arrival.current.get(c.id) ?? 0;
+  const group = (c: CardView): string | number => {
+    if (sort === 'type') return TYPE_RANK[def(c)?.type ?? ''] ?? 3;
+    if (sort === 'cost') return c.costHand ?? def(c)?.costHand ?? 99;
+    return 0;
+  };
+  const cards = [...held].sort((a, b) => (group(a) as number) - (group(b) as number) || drawn(a) - drawn(b));
+
   const out = drag && !drag.returning ? drag.cardId : null;
   const fanned = cards.filter((c) => c.id !== out);
-  const n = fanned.length;
-  const spread = Math.min(6, 30 / Math.max(n, 1));
-  const step = n > 6 ? 0.62 : 0.8;
+  const spaced = sort !== 'draw';
+  const fan = fanLayout(fanned.map(group), spaced);
+  // The card that left keeps the place it had, hidden
+  const whole = out !== null ? fanLayout(cards.map(group), spaced) : fan;
+  // Room on the left: the outer card leans out (it turns about a point below it)
+  let squeeze = 1;
+  if (leftBound !== undefined && stageW && cardW && whole.half > 0) {
+    const tilt = (whole.offs[0] ? Math.abs(whole.offs[0]) * whole.spread : 0) * (Math.PI / 180);
+    const room = stageW / 2 - leftBound - 24 - cardW / 2 - 1.25 * cardW * (450 / 324) * Math.sin(tilt);
+    squeeze = Math.max(0.3, Math.min(1, room / (whole.half * cardW)));
+  }
   return (
     <div className={`arena-hand ${retracted ? 'retracted' : ''} ${inactive ? 'inactive' : ''}`} aria-label="Your hand" onMouseEnter={onEnter} onMouseLeave={onLeave}>
       {cards.map((c, j) => {
-        // The card that left keeps the place it had, hidden
+        const l = c.id === out ? whole : fan;
         const i = c.id === out ? j : fanned.indexOf(c);
-        const off = i - ((c.id === out ? cards.length : n) - 1) / 2;
+        const off = l.offs[i];
         return (
           <div
             key={c.id}
             className={`ah-slot ${ui.selected === c.id ? 'lifted' : ''}`}
             style={{
-              ['--x' as string]: `calc(var(--card-hand-w) * ${off * step})`,
-              ['--rot' as string]: `${off * spread}deg`,
+              ['--x' as string]: `calc(var(--card-hand-w) * ${l.xs[i] * squeeze})`,
+              ['--rot' as string]: `${off * l.spread}deg`,
               ['--dy' as string]: `${off * off * 3}px`,
               zIndex: i + 1,
             }}
@@ -175,6 +229,82 @@ export function ArenaHand({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The order of my hand: a round button (the Undo button's look) left of the hand, at a fixed
+ * place, the current order written under it; it opens a menu of the three orders.
+ */
+export function HandSortButton({ sort, onChange }: { sort: HandSort; onChange: (s: HandSort) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  const current = HAND_SORTS.find((o) => o.id === sort) ?? HAND_SORTS[0];
+  const sorted = sort !== 'draw';
+  return (
+    <div className="hand-sort" ref={ref}>
+      {open && (
+        <div className="hs-menu" role="menu" aria-label="Sort hand">
+          <div className="hs-title">Sort hand</div>
+          {HAND_SORTS.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={o.id === sort}
+              className="hs-opt"
+              onClick={() => {
+                onChange(o.id);
+                setOpen(false);
+              }}
+            >
+              <svg className="hs-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {o.id === sort && <path d="M5 12l5 5L20 7" />}
+              </svg>
+              <span>
+                <span className="hs-label">{o.label}</span>
+                <span className="hs-hint">{o.hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className={`undo-btn hs-btn ${sorted ? 'active' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Sort hand: ${current.label}`}
+        title="Sort hand"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 6h10" />
+          <path d="M4 12h7" />
+          <path d="M4 18h4" />
+          <path d="M18 5v14" />
+          <path d="M15 16l3 3 3-3" />
+        </svg>
+      </button>
+      <span className={`undo-caption hs-caption ${sorted ? 'active' : ''}`} aria-hidden="true">
+        {current.short}
+      </span>
     </div>
   );
 }

@@ -26,6 +26,9 @@ export interface LastGame {
   token?: string | null;
 }
 export const rememberGame = (g: LastGame) => write(KEY_GAME, g);
+/** Order of the cards in my hand on the table (Hud.tsx, HandSort) */
+export const savedHandSort = () => read<string>('arena.handSort');
+export const saveHandSort = (s: string) => write('arena.handSort', s);
 export const lastGame = () => read<LastGame>(KEY_GAME);
 // `slot`: another set of name and deck (the second side of a game against oneself)
 export const savedName = (slot = '') => read<string>(KEY_NAME + slot) ?? '';

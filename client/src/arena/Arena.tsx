@@ -4,7 +4,8 @@ import { Log } from '../components/Log';
 import { EndScreen } from '../components/EndScreen';
 import { useArenaLayout } from './layout';
 import { Mat } from './Mat';
-import { ArenaHand, InfoChip, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHint } from './Hud';
+import { ArenaHand, HandSortButton, InfoChip, isHandSort, OppHand, PhaseBanner, PlayerChip, Prompt, RotateHint, type HandSort } from './Hud';
+import { saveHandSort, savedHandSort } from '../screens/storage';
 import { fly, snapshot, type Snapshot } from './flights';
 import { launchReveal, REVEAL_MS } from './reveals';
 import { CastFocus, TargetArrows } from './Cast';
@@ -63,6 +64,28 @@ export function Arena({
     setPeek(false);
   };
   const { layout: l, scale, portrait } = useArenaLayout();
+  // Order of my hand, remembered on this device
+  const [handSort, setHandSort] = useState<HandSort>(() => {
+    const s = savedHandSort();
+    return isHandSort(s) ? s : 'draw';
+  });
+  const changeHandSort = (s: HandSort) => {
+    setHandSort(s);
+    saveHandSort(s);
+  };
+  // Right edge of the controls bottom left (my name, the sort button): the hand stays clear of it.
+  // Offsets are stage pixels (the stage's scale does not change them)
+  const meDockRef = useRef<HTMLDivElement>(null);
+  const [meDockRight, setMeDockRight] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = meDockRef.current;
+    if (!el) return;
+    const measure = () => setMeDockRight(el.offsetLeft + el.offsetWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [l.mode]);
   const rootRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const snap = useRef<Snapshot | null>(null);
@@ -123,10 +146,24 @@ export function Arena({
           </div>
         </div>
         {opp && <PlayerChip player={opp} mine={false} className="chip-opp" action={oppAction} />}
-        {me && <PlayerChip player={me} mine={you !== null} className="chip-me" />}
+        {/* Bottom left: my name, then the sort button (on phones my name is bottom right) */}
+        <div className="me-dock" ref={meDockRef}>
+          {me && l.mode === 'wide' && <PlayerChip player={me} mine={you !== null} className="chip-me" />}
+          {me && you !== null && <HandSortButton sort={handSort} onChange={changeHandSort} />}
+        </div>
+        {me && l.mode !== 'wide' && <PlayerChip player={me} mine={you !== null} className="chip-me" />}
         {opp && <OppHand player={opp} />}
         <InfoChip onLeave={onLeave} connected={connected} onLog={() => setLogOpen((o) => !o)} unread={unread} />
-        <ArenaHand retracted={queueOn && !peek} inactive={queueOn} onEnter={handEnter} onLeave={handLeave} />
+        <ArenaHand
+          retracted={queueOn && !peek}
+          inactive={queueOn}
+          onEnter={handEnter}
+          onLeave={handLeave}
+          sort={handSort}
+          leftBound={meDockRight}
+          stageW={l.W}
+          cardW={parseFloat(l.vars['--card-hand-w'])}
+        />
         <div className="end-dock">
           {/* Every decision is taken at the bottom of the screen, beside End turn */}
           <Prompt />
