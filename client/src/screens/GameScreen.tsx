@@ -6,6 +6,8 @@ import { InspectProvider } from '../game/inspect';
 import { GameProvider } from '../game/GameContext';
 import { DragProvider } from '../game/drag';
 import { Arena } from '../arena/Arena';
+import { ShownTargets } from '../arena/Cast';
+import { useCastStage } from '../game/useCastStage';
 import { Inspector } from '../components/Inspector';
 import { forgetGame, isSoloGame, rememberGame, tokenOf } from './storage';
 
@@ -25,7 +27,9 @@ export function GameScreen({
 }) {
   const { catalog, error } = useCatalog();
   const game = useGame(gameId, player, token);
-  const { view } = game;
+  // The opponents' spells are shown beside the mat, then their targets, before their result
+  const stage = useCastStage(game.view, player);
+  const view = stage.view;
   const refs = useMemo(() => (view ? view.cards.map((c) => c.ref).filter((r): r is string => !!r) : []), [view]);
 
   useEffect(() => {
@@ -87,7 +91,9 @@ export function GameScreen({
     <InspectProvider catalog={catalog} preferredRefs={refs}>
       <GameProvider view={view} catalog={catalog} log={game.log} sending={game.sending} send={game.send}>
         <DragProvider>
-          <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} oppAction={switcher} undo={undo} />
+          <ShownTargets.Provider value={stage.targets}>
+            <Arena onLeave={onLeave} connected={game.connected} extraTop={extra} oppAction={switcher} undo={undo} />
+          </ShownTargets.Provider>
         </DragProvider>
       </GameProvider>
       <Inspector />

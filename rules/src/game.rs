@@ -451,6 +451,12 @@ pub struct LogLine {
     /// Not in PHP: the card revealed from the top of a deck (`drawCards` to `reveal-{pId}`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reveal: Option<CardId>,
+    /// Not in PHP: the spell cast (`playCard` to `limbo`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cast: Option<CardId>,
+    /// Not in PHP: the cards targeted (`targetCards`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<CardId>,
 }
 
 impl Game {

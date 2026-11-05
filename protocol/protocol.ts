@@ -197,6 +197,18 @@ export interface RevealView {
   to: 'deck' | 'hand' | 'reserve' | 'discard' | 'board';
 }
 
+/** A spell cast (not sent by the PHP oracle): its card, the cards its caster targeted for it, and
+ * whether it has left limbo. Lets a client show the cast, then its targets, before its result. */
+export interface CastView {
+  seq: number; // the log entry of the cast
+  player: PlayerId;
+  cardId: number;
+  ref: string | null;
+  unique?: CardDef;
+  targets: number[];
+  resolved: boolean;
+}
+
 export interface GameView {
   gameId: string;
   you: PlayerId | null; // null for a spectator
@@ -218,6 +230,8 @@ export interface GameView {
   canUndo?: boolean;
   /** The latest cards revealed from the top of a deck (not sent by the PHP oracle) */
   reveals?: RevealView[];
+  /** The latest spells cast (not sent by the PHP oracle) */
+  casts?: CastView[];
 }
 
 // ---------------------------------------------------------------------------

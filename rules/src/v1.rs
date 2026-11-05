@@ -1219,6 +1219,7 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool
         })
         .collect();
     let reveals = reveals(g, you)?;
+    let casts = casts(g, you)?;
     Ok(json!({
         "gameId": game_id,
         "you": you,
@@ -1235,7 +1236,42 @@ fn build_view(g: &mut Game, you: Option<PId>, game_id: &str, with_decision: bool
         "waitingFor": waiting,
         "log": log,
         "reveals": reveals,
+        "casts": casts,
     }))
+}
+
+/// Not in PHP: the latest spells cast (the log lines that carry one), with the cards targeted
+/// after each (the `targetCards` lines of its caster before the next spell) and whether it has
+/// left limbo (resolved), so that a client can show the cast before its result
+fn casts(g: &Game, you: Option<PId>) -> R<Vec<Value>> {
+    let lines = crate::arena::log_for(g, you);
+    let starts: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| l.cast.is_some()).map(|(i, _)| i).collect();
+    let mut out = vec![];
+    for (k, &i) in starts.iter().enumerate().rev().take(6).rev() {
+        let l = lines[i];
+        let id = l.cast.unwrap_or(0);
+        let Ok(c) = g.card(id) else { continue };
+        let end = starts.get(k + 1).copied().unwrap_or(lines.len());
+        let mut targets: Vec<i64> = vec![];
+        for t in &lines[i + 1..end] {
+            if t.player == l.player {
+                targets.extend(t.targets.iter().filter(|&&x| x != id));
+            }
+        }
+        let mut e = json!({
+            "seq": l.seq,
+            "player": l.player.unwrap_or(c.pid),
+            "cardId": id,
+            "ref": card_ref(g, id)?,
+            "targets": targets,
+            "resolved": c.location != "limbo",
+        });
+        if php::loose_eq(c.db_props.get("rarity").unwrap_or(&Value::Null), &json!(2)) {
+            e["unique"] = unique_def(&c.db_props);
+        }
+        out.push(e);
+    }
+    Ok(out)
 }
 
 /// Not in PHP: the latest cards revealed from the top of a deck (the log lines that carry one),
@@ -1437,5 +1473,14 @@ pub fn log_line(g: &Game, n: &Value) -> Option<LogLine> {
     let reveal = (name == "drawCards" && php::strval(php::get(&args, "to")).starts_with("reveal-"))
         .then(|| php::vals(php::get(&args, "cardIds")).first().map(|c| php::intval(c)))
         .flatten();
-    Some(LogLine { seq: php::intval(php::get(n, "seq")).max(0) as u64, text, player, target, reveal })
+    let cast = (name == "playCard" && php::get(&args, "location") == &json!("limbo")).then(|| php::intval(php::get(&args, "cardId")));
+    let targets = if name == "targetCards" {
+        php::vals(php::get(&args, "cardIds"))
+            .into_iter()
+            .map(|c| php::intval(if php::is_arr(c) { php::get(c, "id") } else { c }))
+            .collect()
+    } else {
+        vec![]
+    };
+    Some(LogLine { seq: php::intval(php::get(n, "seq")).max(0) as u64, text, player, target, reveal, cast, targets })
 }
