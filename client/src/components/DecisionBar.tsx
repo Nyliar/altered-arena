@@ -322,6 +322,8 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   if (primaryOnTrack && decision.kind === 'turn') return null;
   // Picked on the board (expeditions, players, places): nothing here, unless a Pass has no other button
   if (primaryOnTrack && pickedOnBoard(decision) && !(decision.canPass && primaryAction(decision)?.kind !== 'pass')) return null;
+  // Cards from hand to mana: the glowing hand says it, Confirm and Pass are on the track button
+  if (primaryOnTrack && decision.kind === 'select' && decision.toMana && !pickerCardIds(view, decision).length) return null;
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click

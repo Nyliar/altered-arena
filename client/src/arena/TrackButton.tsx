@@ -36,6 +36,10 @@ export function TrackButton() {
     label = 'End turn';
     hot = !canAct;
     run = () => void send({ type: 'endTurn' });
+  } else if (p?.kind === 'confirm' && decision.kind === 'select' && decision.toMana && decision.canPass && !ui.picked.length) {
+    // Cards to mana have no bar (DecisionBar): nothing picked yet, the button passes
+    label = decision.passLabel ?? 'Pass';
+    run = () => void send({ type: 'pass' });
   } else if (p?.kind === 'confirm') {
     const a = confirmAnswer(decision, ui);
     label = p.label;
