@@ -45,6 +45,10 @@ export function TrackButton() {
     label = p.label;
     hot = !!a;
     if (a) run = () => void send(a);
+  } else if (p?.kind === 'button') {
+    label = p.label;
+    hot = true;
+    run = () => void send({ type: 'button', key: p.key });
   } else if (p?.kind === 'pass') {
     label = p.label;
     run = () => void send({ type: 'pass' });

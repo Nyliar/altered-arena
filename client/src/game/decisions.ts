@@ -187,9 +187,13 @@ export function confirmAnswer(d: Decision, ui: UIState) {
 
 /**
  * The main action of a decision, shown on its own button (the round button of the arena track):
- * end the turn, confirm the picks, or pass an optional step.
+ * end the turn, confirm the picks, pass an optional step, or the only button of a decision.
  */
-export type PrimaryAction = { kind: 'endTurn' } | { kind: 'confirm'; label: string } | { kind: 'pass'; label: string };
+export type PrimaryAction =
+  | { kind: 'endTurn' }
+  | { kind: 'confirm'; label: string }
+  | { kind: 'pass'; label: string }
+  | { kind: 'button'; key: string; label: string };
 
 export function primaryAction(d: Decision | null): PrimaryAction | null {
   if (!d) return null;
@@ -205,6 +209,10 @@ export function primaryAction(d: Decision | null): PrimaryAction | null {
       return { kind: 'confirm', label: 'Exchange' };
     case 'expedition':
       if (!(d.min === 1 && d.max === 1)) return { kind: 'confirm', label: 'Confirm' };
+      break;
+    case 'buttons':
+      // One button (confirm a revealed card...): it is the main action
+      if (!d.markRegion && d.buttons.length === 1) return { kind: 'button', key: d.buttons[0].key, label: d.buttons[0].label };
       break;
     case 'deck':
       return null;

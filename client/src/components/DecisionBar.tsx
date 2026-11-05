@@ -222,6 +222,8 @@ function Controls({ d, hide }: { d: Decision; hide?: PrimaryAction['kind'] }) {
             <CommonButtons d={d} hidePass={hidePass} />
           </div>
         );
+      // The only button is on the track button: the bar shows the prompt alone
+      if (hide === 'button') return d.canPass && !hidePass ? <div className="db-buttons"><CommonButtons d={d} /></div> : null;
       return (
         <div className="db-buttons wrap">
           {d.buttons.map((b) => (
@@ -348,9 +350,11 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
         )}
         <RichText text={auto?.countdown ? 'Your turn ends… Undo to take it back' : decision.prompt} />
       </div>
-      <div className="db-controls">
-        <Controls d={decision} hide={primaryOnTrack ? primaryAction(decision)?.kind : undefined} />
-      </div>
+      {!(primaryOnTrack && primaryAction(decision)?.kind === 'button' && !decision.canPass) && (
+        <div className="db-controls">
+          <Controls d={decision} hide={primaryOnTrack ? primaryAction(decision)?.kind : undefined} />
+        </div>
+      )}
     </div>
   );
 }
