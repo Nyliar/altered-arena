@@ -50,8 +50,8 @@ export const BoardCard = memo(function BoardCard({ id, size, className }: { id: 
       </div>
       {(a?.support || a?.tap) && (
         <span className="ability-flags">
-          {a.support && <span title="Support ability available">S</span>}
-          {a.tap && <span title="Exhaust ability available">T</span>}
+          {a.support && <span>S</span>}
+          {a.tap && <span>T</span>}
         </span>
       )}
     </motion.div>

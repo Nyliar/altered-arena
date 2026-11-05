@@ -110,7 +110,6 @@ export function HeroMarkers({ player }: { player: PlayerView }) {
             type="button"
             className={`hero-marker ${usable ? 'usable' : ''} ${out ? (held!.x === null ? 'held' : 'out') : ''}`}
             disabled={!usable}
-            title={usable ? `Drag the ${b} marker onto a visible region` : `${b} terrain marker`}
             aria-label={`${b} terrain marker`}
             onPointerDown={usable ? (e) => begin(e, id, b) : undefined}
           >

@@ -31,7 +31,7 @@ export function ManaBar({ player, mine }: { player: PlayerView; mine: boolean })
         type="button"
         className={`mana-bar ${mine ? 'mine' : 'theirs'}`}
         data-pile={`mana-${player.id}`}
-        title={`${player.name}: ${player.manaAvailable} Mana available out of ${player.manaTotal}`}
+        aria-label={`${player.name}: ${player.manaAvailable} Mana available out of ${player.manaTotal}`}
         onClick={() => mana.length && setOpen(true)}
       >
         <span className="mb-label">Mana</span>
@@ -80,7 +80,7 @@ export function InfoChip({ onLeave, connected, onLog, unread, extra }: { onLeave
       <span className="ic-day">Day {view.day}</span>
       <span className="ic-phases">
         {PHASES.map((p) => (
-          <img key={p.phase} src={`/img/icons/${p.icon}.png`} alt={p.label} title={p.label} className={p.phase === view.phase ? 'current' : ''} />
+          <img key={p.phase} src={`/img/icons/${p.icon}.png`} alt={p.label} className={p.phase === view.phase ? 'current' : ''} />
         ))}
       </span>
       <span className="ic-phase">{phaseLabel(view.phase)}</span>
@@ -88,8 +88,8 @@ export function InfoChip({ onLeave, connected, onLog, unread, extra }: { onLeave
       <button type="button" className="ic-btn" onClick={onLog}>
         Log{unread > 0 && <span className="ic-badge">{unread > 99 ? '99+' : unread}</span>}
       </button>
-      <span className={`conn ${connected ? 'ok' : 'down'}`} title={connected ? 'Connected' : 'Reconnecting…'} />
-      <button type="button" className="ic-btn" onClick={onLeave} title="Back to lobby" aria-label="Back to lobby">
+      <span className={`conn ${connected ? 'ok' : 'down'}`} />
+      <button type="button" className="ic-btn" onClick={onLeave} aria-label="Back to lobby">
         ✕
       </button>
     </div>
@@ -291,7 +291,6 @@ export function HandSortButton({ sort, onChange }: { sort: HandSort; onChange: (
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Sort hand: ${current.label}`}
-        title="Sort hand"
         onClick={() => setOpen((o) => !o)}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -316,7 +315,7 @@ export function OppHand({ player }: { player: PlayerView }) {
   const step = shown > 1 ? Math.min(0.42, 2.6 / (shown - 1)) : 0;
   const spread = Math.min(5, 26 / Math.max(shown, 1));
   return (
-    <div className="opp-hand" aria-label={`${player.name}: ${n} cards in hand`} title={`${n} cards in hand`}>
+    <div className="opp-hand" aria-label={`${player.name}: ${n} cards in hand`}>
       {Array.from({ length: shown }, (_, i) => {
         const off = i - (shown - 1) / 2;
         return (

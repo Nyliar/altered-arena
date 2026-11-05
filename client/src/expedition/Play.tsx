@@ -186,7 +186,7 @@ export function Play({
       <Shell current="play">
         <div className="xp-head">
           <h1>Jouer</h1>
-          <button type="button" className="xp-chip" onClick={pickDeck} title="Pseudo et deck">
+          <button type="button" className="xp-chip" onClick={pickDeck} aria-label="Pseudo et deck">
             {myHero ? <img className="xp-por" src={artUrl(myHero)} alt="" width={40} height={40} /> : <span className="xp-por play-por-empty" />}
             <span>
               <strong>{name}</strong>
@@ -341,7 +341,7 @@ export function Play({
                             role="radio"
                             aria-checked={ai?.id === a.id}
                             className={`play-ai-item ${ai?.id === a.id ? 'on' : ''}`}
-                            title={a.label}
+                            aria-label={a.label}
                             onClick={() => setAiId(a.id)}
                           >
                             {h ? <img className="xp-por" src={artUrl(h)} alt="" width={44} height={44} /> : <span className="xp-por play-por-empty" />}

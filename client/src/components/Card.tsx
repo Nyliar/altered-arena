@@ -261,7 +261,7 @@ export const Card = memo(function Card({ def, card, size, extraCost, className }
       {(statuses.length > 0 || (card?.boosts ?? 0) > 0 || counters.length > 0) && (
         <div className="card-badges">
           {(card?.boosts ?? 0) > 0 && (
-            <span className="badge badge-boost" title={`${card!.boosts} boost(s)`}>
+            <span className="badge badge-boost">
               <img src="/img/icons/boost.png" alt="" />
               {card!.boosts}
             </span>
@@ -269,17 +269,17 @@ export const Card = memo(function Card({ def, card, size, extraCost, className }
           {statuses.map((s) => {
             const info = STATUS_INFO[s];
             return info?.icon ? (
-              <span key={s} className={`badge badge-status badge-${s}`} title={info.label}>
+              <span key={s} className={`badge badge-status badge-${s}`}>
                 <img src={iconUrl(info.icon)} alt={info.label} />
               </span>
             ) : (
-              <span key={s} className={`badge badge-status badge-text badge-${s}`} title={info?.label ?? s}>
+              <span key={s} className={`badge badge-status badge-text badge-${s}`}>
                 {(info?.label ?? s).slice(0, 3)}
               </span>
             );
           })}
           {counters.map(([name, n]) => (
-            <span key={name} className="badge badge-counter" title={`${n} ${name}`}>
+            <span key={name} className="badge badge-counter">
               <Glyph name="charge" />
               {n}
             </span>
@@ -287,7 +287,7 @@ export const Card = memo(function Card({ def, card, size, extraCost, className }
         </div>
       )}
       {extraCost ? (
-        <span className="card-extra-cost" title={`Costs ${extraCost} more`}>
+        <span className="card-extra-cost">
           +{extraCost}
         </span>
       ) : null}

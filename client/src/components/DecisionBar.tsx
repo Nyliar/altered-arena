@@ -13,17 +13,15 @@ function Btn({
   onClick,
   kind = '',
   disabled,
-  title,
 }: {
   children: ReactNode;
   onClick: () => void;
   kind?: string;
   disabled?: boolean;
-  title?: string;
 }) {
   const { sending } = useGameCtx();
   return (
-    <button type="button" className={`btn ${kind}`} onClick={onClick} disabled={disabled || sending} title={title}>
+    <button type="button" className={`btn ${kind}`} onClick={onClick} disabled={disabled || sending}>
       {children}
     </button>
   );
@@ -63,7 +61,6 @@ function TurnControls({ d, hide }: { d: TurnDecision; hide?: PrimaryAction['kind
           <Btn
             kind={canAct ? '' : 'primary'}
             onClick={() => void send({ type: 'endTurn' })}
-            title="Pass for the rest of the Afternoon"
           >
             End turn
           </Btn>
@@ -261,7 +258,6 @@ function ChoiceButtons({ d, hidePass }: { d: Extract<Decision, { kind: 'choice' 
           key={k}
           kind={cs[0].enabled ? 'primary' : ''}
           disabled={!cs[0].enabled}
-          title={cs.length > 1 ? `Resolve all ${cs.length}` : undefined}
           onClick={() => {
             repeatChoice(cs.length > 1 ? k : null);
             void send({ type: 'choice', id: cs[0].id });
@@ -344,7 +340,7 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
       <div className="db-prompt">
         {before}
         {sourceDef && (
-          <button type="button" className="db-source" onClick={() => inspectCard(source!.id)} title={sourceDef.name}>
+          <button type="button" className="db-source" onClick={() => inspectCard(source!.id)} aria-label={sourceDef.name}>
             {sourceDef.name}
           </button>
         )}

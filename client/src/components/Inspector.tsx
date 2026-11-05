@@ -56,7 +56,7 @@ export function Inspector() {
                       <span key={b} className={`ii-stat stat-${b}`}>
                         <BiomeGlyph biome={b} /> {cur}
                         {cur !== base && (
-                          <small className={cur > base ? 'ii-up' : 'ii-down'} title={`Base ${base}`}>
+                          <small className={cur > base ? 'ii-up' : 'ii-down'}>
                             {' '}
                             {cur > base ? '+' : '−'}
                             {Math.abs(cur - base)}

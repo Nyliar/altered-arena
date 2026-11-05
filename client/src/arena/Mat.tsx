@@ -68,14 +68,14 @@ function Piles({ player }: { player: PlayerView }) {
         className="pile pile-discard"
         data-pile={`discard-${player.id}`}
         onClick={() => discard.length && setOpen(true)}
-        title={`Discard: ${player.discardCount}`}
+        aria-label={`Discard: ${player.discardCount}`}
       >
         {topDef ? <img src={artUrl(topDef)} alt="" draggable={false} /> : <span className="pile-empty" />}
         <b key={player.discardCount} className="pile-count">
           {player.discardCount}
         </b>
       </button>
-      <div className="pile pile-deck" data-pile={`deck-${player.id}`} title={`Deck: ${player.deckCount}`}>
+      <div className="pile pile-deck" data-pile={`deck-${player.id}`}>
         {player.deckCount > 0 ? <img src="/img/card-back.jpg" alt="" draggable={false} /> : <span className="pile-empty" />}
         {revealed !== undefined && <RevealedTop id={revealed} />}
         <b key={player.deckCount} className="pile-count">
@@ -144,7 +144,7 @@ function Totals({ player, side }: { player: PlayerView; side: Side }) {
   const who = player.id === you ? 'me' : 'op';
   const arrow = side === 'hero' ? '▶' : '◀';
   return (
-    <div className={`totals totals-${side} ${exp.blocked ? 'blocked' : ''}`} title={exp.blocked ? 'Blocked' : undefined}>
+    <div className={`totals totals-${side} ${exp.blocked ? 'blocked' : ''}`}>
       {BIOMES.map((b: Biome) => {
         const inRegion = !f.region || f.region.includes(b);
         const win = f.winning.includes(b);
@@ -236,7 +236,7 @@ function ExpSky() {
         <i />
         <i />
       </span>
-      <span className="exp-ribbon" title="Ascended: until Rest, this expedition moves forward even when the opposing one matches it">
+      <span className="exp-ribbon">
         <Wings />
         Ascended <small>until Rest</small>
       </span>
@@ -252,7 +252,7 @@ function HeroCell({ player }: { player: PlayerView }) {
       {player.heroCardId !== null && <MatCard id={player.heroCardId} kind="hero" />}
       <HeroMarkers player={player} />
       {view.firstPlayer === player.id && (
-        <img key={`${view.day}-${player.id}`} className="first-token" src="/img/icons/first-player.png" alt="First player" title="First player" draggable={false} />
+        <img key={`${view.day}-${player.id}`} className="first-token" src="/img/icons/first-player.png" alt="First player" draggable={false} />
       )}
     </div>
   );
@@ -334,7 +334,7 @@ function Marker({ player, side, mine, other }: { player: PlayerView; side: Side;
       style={style}
       onClick={pick?.pick}
       disabled={!pick}
-      title={`${player.name}: ${side} expedition, region ${exp.position}${exp.blocked ? ' (blocked)' : ''}${exp.ascended ? ' (Ascended)' : ''}${moving ? ', moves forward at Dusk' : ''}`}
+      aria-label={`${player.name}: ${side} expedition, region ${exp.position}${exp.blocked ? ' (blocked)' : ''}${exp.ascended ? ' (Ascended)' : ''}${moving ? ', moves forward at Dusk' : ''}`}
     >
       {player.faction ? <img src={`/img/tokens/${player.faction}-${side}.png`} alt="" draggable={false} /> : <span>{side[0].toUpperCase()}</span>}
       {moving && <span className={`marker-arrow ${side}`} aria-hidden="true" />}
@@ -353,7 +353,6 @@ function Ghost({ player, side, mine }: { player: PlayerView; side: Side; mine: b
     <span
       className={`ghost-marker ${mine ? 'mine' : 'theirs'}`}
       style={{ left: `${((regionCenter(next) + dx) / TRACK_UNITS) * 100}%` }}
-      title={`Expected after Dusk: region ${f.next}`}
     />
   );
 }
@@ -413,7 +412,7 @@ function MatTrack({ l }: { l: ArenaLayout }) {
 /** Over the opponent's side of the mat once they have passed (as on BGA): darker and duller */
 function PassedVeil({ l, player }: { l: ArenaLayout; player: PlayerView | undefined }) {
   if (!player?.passed) return null;
-  return <div className="passed-veil" style={{ height: l.rows[0] + l.rows[1] }} title={`${player.name} passed: no more plays this Afternoon`} />;
+  return <div className="passed-veil" style={{ height: l.rows[0] + l.rows[1] }} />;
 }
 
 /** The tilted mat: opponent zone, opponent expeditions, Tumult, my expeditions, my zone. */

@@ -158,19 +158,19 @@ function Viewer({ table, seat, file }: { table?: string; seat?: number; file?: s
   const step = i > 0 ? steps[i - 1] : undefined;
   const controls = (
     <span className="replay-controls">
-      <button type="button" className="btn tiny" title="Start" onClick={() => setI(0)}>
+      <button type="button" className="btn tiny" aria-label="Start" onClick={() => setI(0)}>
         ⏮
       </button>
-      <button type="button" className="btn tiny" title="Previous step (←)" onClick={() => setI((x) => Math.max(0, x - 1))}>
+      <button type="button" className="btn tiny" aria-label="Previous step (←)" onClick={() => setI((x) => Math.max(0, x - 1))}>
         ◀
       </button>
-      <button type="button" className="btn tiny" title="Play / pause (space)" onClick={() => setPlaying((p) => !p)}>
+      <button type="button" className="btn tiny" aria-label="Play / pause (space)" onClick={() => setPlaying((p) => !p)}>
         {playing ? '⏸' : '▶'}
       </button>
-      <button type="button" className="btn tiny" title="Next step (→)" onClick={() => setI((x) => Math.min(views.length - 1, x + 1))}>
+      <button type="button" className="btn tiny" aria-label="Next step (→)" onClick={() => setI((x) => Math.min(views.length - 1, x + 1))}>
         ▶|
       </button>
-      <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Steps per second">
+      <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} aria-label="Steps per second">
         {SPEEDS.map((s) => (
           <option key={s} value={s}>
             ×{s}

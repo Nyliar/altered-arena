@@ -42,7 +42,7 @@ function KeywordNode({ name, arg, withReminder }: { name: string; arg?: string; 
   return (
     <>
       {text || icon ? (
-        <span className={`rt-keyword ${icon ? 'rt-keyword-icon' : ''}`} title={kw?.reminder?.replace(/\{([^}]+)\}/g, '$1')}>
+        <span className={`rt-keyword ${icon ? 'rt-keyword-icon' : ''}`}>
           {icon && <img className="rt-icon" src={`/img/icons/${kw!.icon}.png`} alt="" />}
           {arg !== undefined && <span>{arg}</span>}
           {text}

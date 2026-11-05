@@ -61,7 +61,7 @@ export function CardActions() {
   const cost = cast ? playCost(decision, card, cd, 'spell') : undefined;
   return (
     <div className="card-actions" ref={ref} style={{ visibility: 'hidden' }} role="toolbar" aria-label={`${name}: actions`}>
-      <button type="button" className="ca-side" onClick={() => inspectCard(id)} aria-label={`Zoom on ${name}`} title="Zoom">
+      <button type="button" className="ca-side" onClick={() => inspectCard(id)} aria-label={`Zoom on ${name}`}>
         <Icon name="zoom" size={20} />
       </button>
       {cast && (
@@ -83,7 +83,7 @@ export function CardActions() {
           <span>Exhaust</span>
         </button>
       )}
-      <button type="button" className="ca-side" onClick={() => setUI((u) => ({ ...u, selected: null }))} aria-label="Put the card back" title="Cancel">
+      <button type="button" className="ca-side" onClick={() => setUI((u) => ({ ...u, selected: null }))} aria-label="Put the card back">
         <Icon name="cancel" size={16} />
       </button>
     </div>

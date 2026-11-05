@@ -82,9 +82,9 @@ export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: '
           {card!.statuses.map((s) => {
             const info = STATUS_INFO[s];
             return info?.icon ? (
-              <img key={s} src={iconUrl(info.icon)} alt={info.label} title={info.label} />
+              <img key={s} src={iconUrl(info.icon)} alt={info.label} />
             ) : (
-              <b key={s} title={info?.label ?? s}>
+              <b key={s}>
                 {(info?.label ?? s).slice(0, 3)}
               </b>
             );
@@ -94,7 +94,7 @@ export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: '
       {counters.length > 0 && (
         <span className="mc-counters">
           {counters.map(([name, n]) => (
-            <span key={name} className="mc-counter" title={`${n} ${name}`}>
+            <span key={name} className="mc-counter">
               {n}
             </span>
           ))}
@@ -131,7 +131,7 @@ function SupportIcon({ support, faction, usable, onUse }: { support: string; fac
       type="button"
       className={`mc-support f-${faction} ${usable ? 'usable' : ''}`}
       disabled={!usable}
-      title={usable ? 'Use its support ability' : discard ? 'Support ability: discard me from Reserve' : 'Support ability (in Reserve)'}
+      aria-label={usable ? 'Use its support ability' : discard ? 'Support ability: discard me from Reserve' : 'Support ability (in Reserve)'}
       onPointerDown={stop}
       onPointerUp={stop}
       onClick={(e) => {

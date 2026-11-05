@@ -35,7 +35,7 @@ export function Glyph({ name, title, className }: { name: string; title?: string
   const layers = GLYPHS[name];
   if (!layers) return null;
   return (
-    <span className={`glyph glyph-${name} ${className ?? ''}`} title={title} aria-label={title ?? name} role="img">
+    <span className={`glyph glyph-${name} ${className ?? ''}`} aria-label={title ?? name} role="img">
       {layers.map((l, i) => (
         <span key={i} className={i === 0 ? 'glyph-base' : l.white ? 'glyph-layer glyph-white' : 'glyph-layer'}>
           {l.c}

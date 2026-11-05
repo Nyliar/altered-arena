@@ -109,7 +109,6 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
                     e.preventDefault();
                     inspectCard(c.sourceCardId!);
                   }}
-                  title={cd ? `${cd.name}: ${effectText(c)}` : effectText(c)}
                   aria-label={`Resolve ${cd?.name ?? 'this effect'}: ${effectText(c)}`}
                 >
                   {cd ? <img src={artUrl(cd)} alt="" draggable={false} /> : <span className="eq-noart">{n}</span>}
@@ -120,7 +119,7 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
         </section>
       </div>
       {collapsed && (
-        <button type="button" className="eq-badge" onClick={onExpand} title="Effects to resolve" aria-label={`Show the ${n} effects to resolve`}>
+        <button type="button" className="eq-badge" onClick={onExpand} aria-label={`Show the ${n} effects to resolve`}>
           {focusDef ? <img src={artUrl(focusDef)} alt="" draggable={false} /> : null}
           <span>{n}</span>
         </button>
