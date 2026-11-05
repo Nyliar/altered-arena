@@ -247,6 +247,11 @@ impl ServerGame {
         let id = g.id.clone();
         let mut v = g.game.view(pid, &id).map_err(|e| e.0)?;
         v["seq"] = json!(g.game.notif_seq + g.seq_base);
+        // The engine's undo when it takes something back; else the client falls back on the
+        // server's undo (`canUndo` of the view), which takes back the last answer
+        if v["decision"]["canUndo"] == json!(true) && !g.game.engine_undo_has_effect() {
+            v["decision"].as_object_mut().map(|d| d.remove("canUndo"));
+        }
         let can_undo = seat.is_some_and(|s| self.can_undo(s));
         let g = &mut self.0;
         v["canUndo"] = json!(can_undo);
@@ -430,6 +435,79 @@ mod tests {
                 let mut loaded = ServerGame::load(&g.to_json()).unwrap();
                 loaded.undo(0).map_err(|r| r.msg).unwrap();
                 assert_eq!(loaded.game().oracle_state(), before[answers.len() - 1]);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    /// The view offers the engine's undo only when it takes something back. The engine offers it
+    /// whenever a choice was counted, also after the last target of a turn, which ends the
+    /// engine inside the act and counts the choice in the next one: there the undo reverted to
+    /// the current position and the Undo button did nothing (game o8etju3)
+    #[test]
+    fn the_engine_undo_offered_by_the_view_always_takes_something_back() {
+        std::thread::Builder::new()
+            .stack_size(256 << 20)
+            .spawn(|| {
+                let (mut offered, mut hidden) = (0, 0);
+                for seed in 1..=6 {
+                    let seats = [
+                        NewSeat { name: "Human".into(), bot: false, deck: Some("yz_65_moyo".into()), ai: None, reunion_deck: None },
+                        NewSeat { name: "Bot".into(), bot: true, deck: Some("ax_1_sierra".into()), ai: None, reunion_deck: None },
+                    ];
+                    let mut g = ServerGame::new("e".into(), seats, seed).unwrap();
+                    g.run_bots();
+                    let mut answers = 0;
+                    while answers < 120 && !g.ended() {
+                        let Some(d) = g.game().try_decision(2001).unwrap() else {
+                            g.run_bots();
+                            continue;
+                        };
+                        let view: Value = serde_json::from_slice(&g.view_json(Some(0)).unwrap()).unwrap();
+                        if d["canUndo"] == json!(true) {
+                            let mut u = g.clone();
+                            u.answer(0, &legal::with_id(&d, &json!({"type": "undo"}))).map_err(|r| r.msg).unwrap();
+                            // The state of the cards and players, or the effects still to resolve (the decision)
+                            let pos = |g: &ServerGame| {
+                                let mut d = g.game().try_decision(2001).unwrap().unwrap_or_default();
+                                if let Some(d) = d.as_object_mut() {
+                                    d.remove("id");
+                                    d.remove("canUndo");
+                                }
+                                // Card ids left out: an undo that re-runs an invocation gives the token a new id
+                                let mut st = g.game().oracle_state();
+                                st.as_object_mut().map(|s| s.remove("nextCardId"));
+                                let mut cards: Vec<String> = st["cards"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .map(|c| {
+                                        let mut c = c.clone();
+                                        c.as_object_mut().map(|c| c.remove("id"));
+                                        c.to_string()
+                                    })
+                                    .collect();
+                                cards.sort();
+                                st["cards"] = json!(cards);
+                                (st, d)
+                            };
+                            let changed = pos(&u) != pos(&g);
+                            if view["decision"]["canUndo"] == json!(true) {
+                                offered += 1;
+                                assert!(changed, "seed {seed}: the view offers an engine undo that changes nothing ({})", d["id"]);
+                            } else {
+                                hidden += 1;
+                                assert!(!changed, "seed {seed}: the view hides an engine undo that takes something back ({})", d["id"]);
+                            }
+                        }
+                        let a = legal::candidates(&d).into_iter().map(|c| legal::with_id(&d, &c)).find(|a| g.clone().answer(0, a).is_ok()).expect("an answer");
+                        g.answer(0, &a).map_err(|r| r.msg).unwrap();
+                        g.run_bots();
+                        answers += 1;
+                    }
+                }
+                assert!(offered > 0 && hidden > 0, "the games must reach both cases: offered {offered}, hidden {hidden}");
             })
             .unwrap()
             .join()
