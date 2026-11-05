@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Forced command of the CI deploy key on the VPS (user arena, rootless podman).
+# Installed once by hand at /home/arena/bin/arena-deploy; CI cannot change it.
+# authorized_keys line:
+#   restrict,command="/home/arena/bin/arena-deploy" ssh-ed25519 AAAA... github-actions
+#
+# Commands (passed as the SSH command):
+#   deploy X.Y.Z    read a gzipped docker-archive of localhost/altered-arena:X.Y.Z on stdin,
+#                   load it, make it :latest, restart the service, check it answers
+#   rollback X.Y.Z  make an image already on the VPS :latest and restart
+#   list            the images on the VPS
+set -euo pipefail
+
+IMAGE=localhost/altered-arena
+KEEP=3
+read -r ACTION VERSION <<<"${SSH_ORIGINAL_COMMAND:-}"
+
+restart_and_check() {
+  podman tag "$IMAGE:$1" "$IMAGE:latest"
+  systemctl --user restart altered-arena
+  for _ in $(seq 1 30); do
+    if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+      echo "altered-arena $1 is up"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "altered-arena $1 did not answer on 127.0.0.1:8080" >&2
+  journalctl --user -u altered-arena -n 50 --no-pager >&2 || true
+  return 1
+}
+
+valid_version() { [[ "${VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
+case "$ACTION" in
+  deploy)
+    valid_version || { echo "usage: deploy X.Y.Z" >&2; exit 2; }
+    gunzip | podman load -q
+    podman image exists "$IMAGE:$VERSION" || { echo "the archive has no $IMAGE:$VERSION" >&2; exit 1; }
+    restart_and_check "$VERSION"
+    # Keep the last $KEEP versions for rollback
+    podman images "$IMAGE" --format '{{.Tag}}' --sort created \
+      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n -"$KEEP" \
+      | xargs -r -I{} podman rmi "$IMAGE:{}" >/dev/null || true
+    podman image prune -f >/dev/null
+    ;;
+  rollback)
+    valid_version || { echo "usage: rollback X.Y.Z" >&2; exit 2; }
+    podman image exists "$IMAGE:$VERSION" || { echo "no $IMAGE:$VERSION on the VPS" >&2; exit 1; }
+    restart_and_check "$VERSION"
+    ;;
+  list)
+    podman images "$IMAGE"
+    ;;
+  *)
+    echo "usage: deploy X.Y.Z | rollback X.Y.Z | list" >&2
+    exit 2
+    ;;
+esac

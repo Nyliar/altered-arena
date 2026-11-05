@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "40d4b80ca27948d6dba63f80736d5ecad19ceac7",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "altered-arena",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

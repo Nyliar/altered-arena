@@ -4,6 +4,7 @@ FROM rust:1-slim AS server
 WORKDIR /src
 COPY altered-arena/Cargo.toml altered-arena/Cargo.lock ./
 COPY altered-arena/rules rules
+COPY altered-arena/protocol/data protocol/data
 COPY altered-arena/goldens goldens
 COPY altered-arena/ai ai
 COPY altered-arena/replay replay
