@@ -3,7 +3,7 @@ import type { Biome, CardDef, CardView } from '@protocol';
 import { artUrl } from '../api/catalog';
 import { Glyph } from './Glyph';
 import { RichText } from './RichText';
-import { STATUS_INFO } from '../game/keywords';
+import { iconUrl, STATUS_INFO } from '../game/keywords';
 import './Card.css';
 
 export type CardSize = 'small' | 'hand' | 'zoom';
@@ -270,7 +270,7 @@ export const Card = memo(function Card({ def, card, size, extraCost, className }
             const info = STATUS_INFO[s];
             return info?.icon ? (
               <span key={s} className={`badge badge-status badge-${s}`} title={info.label}>
-                <img src={`/img/icons/${info.icon}.png`} alt={info.label} />
+                <img src={iconUrl(info.icon)} alt={info.label} />
               </span>
             ) : (
               <span key={s} className={`badge badge-status badge-text badge-${s}`} title={info?.label ?? s}>

@@ -91,6 +91,11 @@ export const KEYWORDS: Record<string, Keyword> = {
   COMPLETED_LOW: { text: 'Completed' },
 };
 
+/** URL of an icon under /img/icons: a bare name is a .png, otherwise the file name as given. */
+export function iconUrl(icon: string): string {
+  return `/img/icons/${icon.includes('.') ? icon : `${icon}.png`}`;
+}
+
 /** Reminder of the statuses shown on cards (CardView.statuses). */
 export const STATUS_INFO: Record<string, { label: string; icon?: string; reminder?: string }> = {
   fleeting: { label: 'Fleeting', icon: 'fleeting', reminder: KEYWORDS.FLEETING_CHAR.reminder },
@@ -98,7 +103,7 @@ export const STATUS_INFO: Record<string, { label: string; icon?: string; reminde
   asleep: { label: 'Asleep', icon: 'sleep', reminder: ASLEEP },
   tough: { label: 'Tough', icon: 'tough', reminder: tough('X') },
   defender: { label: 'Defender', reminder: DEFENDER },
-  gigantic: { label: 'Gigantic', reminder: KEYWORDS.GIGANTIC.reminder },
+  gigantic: { label: 'Gigantic', icon: 'gigantic.svg', reminder: KEYWORDS.GIGANTIC.reminder },
   eternal: { label: 'Eternal', reminder: ETERNAL },
   seasoned: { label: 'Seasoned', reminder: SEASONED },
   scout: { label: 'Scout' },

@@ -4,7 +4,7 @@ import { useGameCtx } from '../game/GameContext';
 import { useCardPointer } from '../game/useCardPointer';
 import { useDrag } from '../game/drag';
 import { hasActions } from '../game/decisions';
-import { STATUS_INFO } from '../game/keywords';
+import { iconUrl, STATUS_INFO } from '../game/keywords';
 import { artUrl } from '../api/catalog';
 import { BIOMES, statSizes } from '../components/Card';
 import { Glyph } from '../components/Glyph';
@@ -50,7 +50,6 @@ export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: '
       data-card-id={id}
       data-rarity={d?.rarity}
       style={{ touchAction: draggable ? 'none' : undefined }}
-      title={d?.name}
       {...handlers}
     >
       {!d ? (
@@ -83,7 +82,7 @@ export const MatCard = memo(function MatCard({ id, kind }: { id: number; kind: '
           {card!.statuses.map((s) => {
             const info = STATUS_INFO[s];
             return info?.icon ? (
-              <img key={s} src={`/img/icons/${info.icon}.png`} alt={info.label} title={info.label} />
+              <img key={s} src={iconUrl(info.icon)} alt={info.label} title={info.label} />
             ) : (
               <b key={s} title={info?.label ?? s}>
                 {(info?.label ?? s).slice(0, 3)}

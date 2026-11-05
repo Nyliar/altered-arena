@@ -47,7 +47,7 @@ function RevealedTop({ id }: { id: number }) {
   const { handlers } = useCardPointer(id);
   const d = def(byId.get(id));
   return (
-    <span className="pile-revealed" data-card-id={id} title={`Revealed on top of the deck: ${d?.name ?? ''}`} {...handlers}>
+    <span className="pile-revealed" data-card-id={id} {...handlers}>
       {d && <img src={artUrl(d)} alt={d.name} draggable={false} />}
       <span className="pile-tag">Revealed</span>
     </span>
@@ -203,7 +203,7 @@ function ExpCell({ player, side, mine }: { player: PlayerView; side: Side; mine:
   );
   const cls = `exp-cell exp-${side} ${pick ? 'selectable' : ''} ${pickExp?.picked ? 'picked' : ''} ${ascended ? 'is-ascended' : ''}`;
   return mine ? (
-    <DropZone destination={zone} className={cls} label={side === 'hero' ? 'Hero expedition' : 'Companion expedition'}>
+    <DropZone destination={zone} className={cls}>
       {body}
     </DropZone>
   ) : (
