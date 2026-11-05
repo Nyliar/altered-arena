@@ -9,3 +9,6 @@ server/goldens/
 perf/**/*.sample.txt
 private/
 server/reunion_raw/
+# Games saved by a local server. Recorded games kept as test data are tracked
+# on purpose: add a new one with `git add -f data/games/ID.json`.
+data/games/*
