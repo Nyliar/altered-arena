@@ -34,11 +34,6 @@ function CommonButtons({ d, hidePass }: { d: Decision; hidePass?: boolean }) {
   const { send } = useGameCtx();
   return (
     <>
-      {d.canUndo && (
-        <Btn kind="ghost" onClick={() => void send({ type: 'undo' })}>
-          Undo
-        </Btn>
-      )}
       {d.canPass && !hidePass && <Btn onClick={() => void send({ type: 'pass' })}>{d.passLabel ?? 'Pass'}</Btn>}
     </>
   );
@@ -294,6 +289,16 @@ function ExpeditionButton({ d, optKey, label, picked, single }: { d: Extract<Dec
   );
 }
 
+/** Zones of the mat where a location is picked (arena/Mat.tsx) */
+const BOARD_ZONES = ['reserve', 'landmark', 'heroExpedition', 'companionExpedition'];
+
+/** A decision whose options are all drawn on the board, where they are picked */
+function pickedOnBoard(d: Decision): boolean {
+  if (d.kind === 'expedition' || d.kind === 'player') return true;
+  if (d.kind === 'location') return d.locations.every((l) => l.player !== undefined && BOARD_ZONES.includes(l.zone as string));
+  return false;
+}
+
 /**
  * The prompt of the current decision and its controls; a waiting indicator otherwise.
  * primaryOnTrack: the main action (end turn, confirm, pass) is on another button, not here.
@@ -315,6 +320,8 @@ export function DecisionBar({ primaryOnTrack = false, before }: { primaryOnTrack
   if (!decision || effectQueue(decision)) return null;
   // My turn: the glowing cards say it, End turn and Undo have their own buttons beside the hand
   if (primaryOnTrack && decision.kind === 'turn') return null;
+  // Picked on the board (expeditions, players, places): nothing here, unless a Pass has no other button
+  if (primaryOnTrack && pickedOnBoard(decision) && !(decision.canPass && primaryAction(decision)?.kind !== 'pass')) return null;
   const source = decision.sourceCardId !== undefined ? byId.get(decision.sourceCardId) : undefined;
   const sourceDef = def(source);
   // Answered for the player (no real choice): nothing to click

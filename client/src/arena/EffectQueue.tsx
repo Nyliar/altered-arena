@@ -80,11 +80,6 @@ export function EffectQueue({ collapsed, onExpand }: { collapsed: boolean; onExp
                 {d.passLabel ?? 'Pass'}
               </button>
             )}
-            {d?.canUndo && (
-              <button type="button" className="eq-other ghost" disabled={sending} onClick={() => void send({ type: 'undo' })}>
-                Undo
-              </button>
-            )}
           </div>
           <div className="eq-items">
             {q.effects.map((c) => {
