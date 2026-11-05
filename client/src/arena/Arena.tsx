@@ -24,12 +24,15 @@ export function Arena({
   connected,
   extraTop,
   oppAction,
+  undo,
 }: {
   onLeave: () => void;
   connected: boolean;
   extraTop?: ReactNode;
   /** A control on the opponent's name (a game against oneself: take their seat) */
   oppAction?: ReactNode;
+  /** Against bots: takes back the player's last move (a round button beside the main one) */
+  undo?: { onUndo: () => void; disabled: boolean };
 }) {
   const { view, me, opp, log, you, catalog } = useGameCtx();
   const { layout: l, scale, portrait } = useArenaLayout();
@@ -99,6 +102,19 @@ export function Arena({
         <Prompt />
         <ArenaHand />
         <div className="end-dock">
+          {undo && (
+            <span className="undo-dock">
+              <button type="button" className="undo-btn" disabled={undo.disabled} onClick={undo.onUndo} title="Take back your last move" aria-label="Undo your last move">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 14 4 9l5-5" />
+                  <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+                </svg>
+              </button>
+              <span className="undo-caption" aria-hidden="true">
+                Undo
+              </span>
+            </span>
+          )}
           <TrackButton />
         </div>
         <PhaseBanner />
