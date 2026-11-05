@@ -802,16 +802,22 @@ body:has(.marker-ghost) { cursor: grabbing; }
 .conn { width: 8px; height: 8px; border-radius: 50%; background: #69db7c; }
 .conn.down { background: #ff6b6b; animation: blink 1s infinite; }
 
+/* The prompt and the effects queue, centered above the hand: a zero-height band across the stage,
+   at the bottom of End turn (.end-dock) */
+.center-dock { position: absolute; left: 0; right: 0; bottom: 22px; height: 0; z-index: 16; }
+.layout-phone .center-dock { bottom: 34px; }
+.layout-phone .eq-badge { right: calc(8px + var(--marker-size) * 2 - 24px); }
+
 /* The prompt: DecisionBar restyled */
 .prompt {
   position: absolute;
-  right: calc(100% + 64px);
+  left: calc(50% - 220px);
   /* Above the top edge of the hand, which may hold the cards to pick */
   bottom: calc(var(--card-hand-w) * 0.78 - 12px);
   width: 440px;
   z-index: 20;
 }
-.layout-phone .prompt { right: 0; bottom: calc(100% + 12px); width: 330px; }
+.layout-phone .prompt { left: calc(50% - 165px); bottom: calc(var(--marker-size) * 1.45 + 12px); width: 330px; }
 .prompt .decision-bar {
   background: rgb(10 14 34 / 0.88);
   border: 2px solid var(--cyan);
@@ -1236,19 +1242,18 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
   letter-spacing: 0;
 }
 
-/* Effects that triggered together: a queue of portraits left of End turn, one resolved per click */
+/* Effects that triggered together: a queue of portraits centered above the hand, one resolved per click */
 .effect-queue {
   position: absolute;
-  /* Left of the dock, clear of the landmarks above End turn */
-  right: calc(100% + 64px);
+  left: calc(50% - 170px);
   bottom: 0;
   width: 340px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 17;
-  /* Shrinks toward the badge above End turn */
-  transform-origin: calc(100% + 64px + var(--marker-size) * 2) calc(100% + 34px);
+  /* Shrinks toward the badge above End turn, in the bottom-right corner */
+  transform-origin: 100% 100%;
   transition: transform 0.18s ease-in-out, opacity 0.18s ease-in-out;
 }
 .effect-queue.collapsed { transform: scale(0.06); opacity: 0; pointer-events: none; }
@@ -1305,8 +1310,9 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 .eq-noart { display: grid; place-items: center; width: 100%; height: 100%; color: #ffe6a8; }
 .eq-badge {
   position: absolute;
-  right: calc(var(--marker-size) * 2 - 24px);
-  bottom: calc(100% + 10px);
+  /* Above End turn (.end-dock: 22px from the right, End turn as tall as the dock) */
+  right: calc(22px + var(--marker-size) * 2 - 24px);
+  bottom: calc(var(--marker-size) * 1.45 + 10px);
   width: 48px;
   height: 48px;
   padding: 0;

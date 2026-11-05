@@ -164,10 +164,12 @@ export function Arena({
           stageW={l.W}
           cardW={parseFloat(l.vars['--card-hand-w'])}
         />
-        <div className="end-dock">
-          {/* Every decision is taken at the bottom of the screen, beside End turn */}
+        {/* Every decision is taken at the bottom of the screen, centered above the hand */}
+        <div className="center-dock">
           <Prompt />
           <EffectQueue collapsed={peek} onExpand={expandQueue} />
+        </div>
+        <div className="end-dock">
           {undoBtn && (
             <span className="undo-dock">
               <button type="button" className="undo-btn" disabled={undoBtn.disabled} onClick={undoBtn.onUndo} title="Take back your last move" aria-label="Undo your last move">
