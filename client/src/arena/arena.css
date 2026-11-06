@@ -493,10 +493,20 @@
 .storm-tile {
   position: absolute;
   top: 0;
+}
+.storm-card { position: absolute; inset: 0; }
+.storm-face {
+  position: absolute;
+  inset: 0;
   background-image: url('/img/arena/storm.jpg');
   background-repeat: no-repeat;
 }
-.storm-tile.reveal { animation: arena-reveal 0.45s ease-out; }
+/* While a Tumult card turns face up, its two faces in 3D: its back, then its face (Tile in Mat.tsx).
+   Only then: at rest, 3D layers leave a thin gap between the cards of the track. */
+.storm-tile.turning { perspective: 900px; }
+.storm-tile.turning .storm-card { transform-style: preserve-3d; }
+.storm-tile.turning .storm-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.storm-back { transform: rotateX(180deg); }
 /* Biomes of each revealed region, in a pill at the bottom of the region, under the tokens */
 .region-chips {
   --tot-icon: calc(var(--marker-size) * 0.42);
@@ -1179,7 +1189,6 @@ body.drag-spell .arena .track-drop .drop-label { display: none; }
 @keyframes arena-num { from { transform: scale(1.5); color: #ffd98a; } }
 @keyframes arena-pop { from { transform: scale(0.6); opacity: 0; } }
 @keyframes arena-land { 50% { transform: scale(1.08); } }
-@keyframes arena-reveal { from { transform: rotateY(90deg); filter: brightness(2); } }
 @keyframes arena-fx-up { 30% { box-shadow: 0 0 0 4px #7dff8c, 0 0 30px #7dff8c; } }
 @keyframes arena-fx-down { 30% { box-shadow: 0 0 0 4px #ff6b6b, 0 0 30px #ff6b6b; } }
 @keyframes arena-rise {
