@@ -32,46 +32,64 @@ export function CardBack({ size, className }: { size: CardSize; className?: stri
 }
 
 // ---------------------------------------------------------------------------
-// The printed card, drawn as on BGA: the art, the faction frame of its type and rarity
-// (img/card/frames/<faction>.png, 6 x 9 frames — background-size 600% 900%), costs,
-// statistics, name and texts on a 324 x 450 card. Every length is a multiple of --u,
-// 1/324 of the card width. Positions match bga-altered modules/css/cards.scss.
+// The printed card: the art, then a per-card frame PNG (img/card/frames/ALT_*.png),
+// costs, statistics, name and texts on a 324 x 450 card. Every length is a multiple
+// of --u, 1/324 of the card width. Positions match bga-altered modules/css/cards.scss.
+//
+// Frame files: ALT_{faction}_{rarity}_FRAME_{type}_T{1-4}.png
+//   faction  AX BR LY MU OR YZ (Ordis is OR in assets, OD in the catalog)
+//   rarity   C R E U — exalted files insert EXALTED_ before the type
+//   type     CHARACTER PERMANENT SPELL TOKEN; feats use PROWESS (T1/T2 only)
+//   T1 small text + support, T2 big text + support, T3 no support, T4 big box no support
 // ---------------------------------------------------------------------------
 
 type FrameType = 'hero' | 'token' | 'character' | 'spell' | 'permanent' | 'gear';
 const RARITY: Record<CardDef['rarity'], number> = { common: 0, rare: 1, unique: 2, exalted: 3 };
+const RARITY_CODE: Record<CardDef['rarity'], string> = { common: 'C', rare: 'R', unique: 'U', exalted: 'E' };
 
-/** Position of each frame in the sprite, by frame type, rarity, "support" (has a support ability) and size (2: bigger text box) */
-const FRAMES: Record<string, string> = {
-  hero: '0% 25%',
-  token: '20% 25%',
-  'token-cost-1': '40% 0%',
-  'token-cost-2': '60% 0%',
-  'character-0-0-1': '40% 0%', 'character-0-0-2': '60% 0%', 'character-0-1-1': '0% 0%', 'character-0-1-2': '20% 0%',
-  'character-1-0-1': '80% 25%', 'character-1-0-2': '100% 25%', 'character-1-1-1': '40% 25%', 'character-1-1-2': '60% 0%',
-  'character-2-0-1': '80% 50%', 'character-2-0-2': '100% 50%', 'character-2-1-1': '40% 50%', 'character-2-1-2': '60% 50%',
-  'character-3-0-1': '80% 75%', 'character-3-0-2': '100% 75%', 'character-3-1-1': '40% 75%', 'character-3-1-2': '60% 75%',
-  'spell-0-0-1': '80% 12.5%', 'spell-0-0-2': '100% 12.5%', 'spell-0-1-1': '40% 12.5%', 'spell-0-1-2': '60% 12.5%',
-  'spell-1-0-1': '0% 50%', 'spell-1-0-2': '20% 50%', 'spell-1-1-1': '80% 37.5%', 'spell-1-1-2': '100% 37.5%',
-  'permanent-0-0-1': '0% 12.5%', 'permanent-0-0-2': '20% 12.5%', 'permanent-0-1-1': '80% 0%', 'permanent-0-1-2': '100% 0%',
-  'permanent-1-0-1': '40% 37.5%', 'permanent-1-0-2': '60% 37.5%', 'permanent-1-1-1': '0% 37.5%', 'permanent-1-1-2': '20% 37.5%',
-  'permanent-3-0-1': '0% 100%', 'permanent-3-0-2': '20% 100%', 'permanent-3-1-1': '0% 100%', 'permanent-3-1-2': '20% 100%',
-  'feat-0-1-1': '0% 87.5%', 'feat-0-1-2': '20% 87.5%', 'feat-1-1-1': '40% 87.5%', 'feat-1-1-2': '60% 87.5%',
-  'feat-3-1-1': '80% 87.5%', 'feat-3-1-2': '100% 87.5%',
-  'gear-0-0-1': '40% 62.5%', 'gear-0-0-2': '60% 62.5%', 'gear-0-1-1': '0% 62.5%', 'gear-0-1-2': '20% 62.5%',
-  'gear-1-0-1': '0% 75%', 'gear-1-0-2': '20% 75%', 'gear-1-1-1': '80% 62.5%', 'gear-1-1-2': '100% 62.5%',
-};
+function frameFaction(faction: CardDef['faction']): string {
+  if (faction === 'OD') return 'OR';
+  if (faction === 'NE') return 'NEUTRE';
+  return faction;
+}
 
-function framePosition(type: FrameType, feat: boolean, rarity: number, support: boolean, size: number, tokenHasCost = false): string {
-  if (type === 'hero') return FRAMES.hero;
-  if (type === 'token') return tokenHasCost ? (FRAMES[`token-cost-${size}`] ?? FRAMES.token) : FRAMES.token;
-  const kind = feat ? 'feat' : type;
-  // Rarities without a frame of their own (unique spells...) use the rare one, then the common one
-  for (const r of [rarity, 1, 0]) {
-    const f = FRAMES[`${kind}-${r}-${support ? 1 : 0}-${size}`] ?? FRAMES[`${type}-${r}-${support ? 1 : 0}-${size}`];
-    if (f) return f;
+/** T1 support+small, T2 support+big, T3 no support, T4 no support + bigger box. */
+function frameTier(support: boolean, size: number): 1 | 2 | 3 | 4 {
+  if (support) return size === 2 ? 2 : 1;
+  return size === 2 ? 4 : 3;
+}
+
+function frameFile(def: CardDef, type: FrameType, feat: boolean, support: boolean, size: number, tokenHasCost: boolean): string {
+  const fac = frameFaction(def.faction);
+  const rarity = RARITY_CODE[def.rarity] ?? 'C';
+  const tier = frameTier(support, size);
+
+  if (type === 'hero') return `ALT_${fac === 'NEUTRE' ? 'NE' : fac}_FRAME_HERO`;
+
+  if (type === 'token') {
+    const t = size === 2 ? 3 : 0;
+    if (tokenHasCost && fac !== 'NEUTRE') return `ALT_${fac}_C_FRAME_TOKEN_RECALL_T${t}`;
+    return `ALT_${fac}_FRAME_TOKEN_T${t}`;
   }
-  return FRAMES[`${type}-0-${support ? 1 : 0}-${size}`] ?? '0% 0%';
+
+  if (def.type === 'token' && (type === 'permanent' || type === 'gear')) {
+    return `ALT_${def.faction === 'NE' ? 'NE' : fac}_FRAME_TOKEN-PERMANENT`;
+  }
+
+  if (feat) {
+    const pTier: 1 | 2 = size === 2 ? 2 : 1;
+    const r = rarity === 'U' ? 'R' : rarity;
+    if (r === 'R') return `ALT_${fac}_FRAME_PROWESS_R_F${fac}_T${pTier}`;
+    return `ALT_${fac}_FRAME_PROWESS_${r}_T${pTier}`;
+  }
+
+  const kind = type === 'gear' ? 'PERMANENT' : type.toUpperCase();
+  let r = rarity;
+  // Unique files exist only for characters; exalted permanents only for AX and Ordis
+  if (r === 'U' && kind !== 'CHARACTER') r = 'R';
+  if (r === 'E' && kind === 'PERMANENT' && fac !== 'AX' && fac !== 'OR') r = 'R';
+  if (r === 'E') return `ALT_${fac}_E_FRAME_EXALTED_${kind}_T${tier}`;
+  return `ALT_${fac}_${r}_FRAME_${kind}_T${tier}`;
 }
 
 function frameType(def: CardDef, token: boolean): FrameType {
@@ -186,7 +204,7 @@ function Printed({ def, card, token }: { def: CardDef; card?: CardView; token: b
     >
       <div
         className="fc-frame"
-        style={{ backgroundImage: `url(/img/card/frames/${def.faction}.png)`, backgroundPosition: framePosition(type, feat, rarity, support, size, (type === 'token' || token) && def.costReserve !== undefined) }}
+        style={{ backgroundImage: `url(/img/card/frames/${frameFile(def, type, feat, support, size, (type === 'token' || token) && def.costReserve !== undefined)}.png)` }}
       />
       {hasCosts && (
         <>
